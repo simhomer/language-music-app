@@ -746,57 +746,66 @@ lernt Iván ohne Unterlass.`,
   }
 ];
 
-// Initialize database with sample data
-db.serialize(() => {
-  // Create table
-  db.run(`CREATE TABLE IF NOT EXISTS songs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    song_name TEXT NOT NULL,
-    artist_name TEXT NOT NULL,
-    lyrics_spanish TEXT NOT NULL,
-    lyrics_english TEXT,
-    lyrics_german TEXT,
-    youtube_link TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
+// Seed helper that can be reused by server.js
+function seedWithDb(existingDb, done){
+  existingDb.serialize(() => {
+    // Create table
+    existingDb.run(`CREATE TABLE IF NOT EXISTS songs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      song_name TEXT NOT NULL,
+      artist_name TEXT NOT NULL,
+      lyrics_spanish TEXT NOT NULL,
+      lyrics_english TEXT,
+      lyrics_german TEXT,
+      youtube_link TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
 
-  // Check if table is empty
-  db.get("SELECT COUNT(*) as count FROM songs", [], (err, row) => {
-    if (err) {
-      console.error('Error checking table:', err.message);
-      return;
-    }
+    // Check if table is empty
+    existingDb.get("SELECT COUNT(*) as count FROM songs", [], (err, row) => {
+      if (err) {
+        console.error('Error checking table:', err.message);
+        if (done) done(err);
+        return;
+      }
 
-    if (row.count === 0) {
-      console.log('Table is empty. Adding sample songs...');
-      
-      // Insert sample songs
-      const insertQuery = 'INSERT INTO songs (song_name, artist_name, lyrics_spanish, lyrics_english, lyrics_german, youtube_link) VALUES (?, ?, ?, ?, ?, ?)';
-      
-      sampleSongs.forEach((song, index) => {
-        db.run(insertQuery, [song.song_name, song.artist_name, song.lyrics_spanish, song.lyrics_english || null, song.lyrics_german || null, song.youtube_link], function(err) {
-          if (err) {
-            console.error(`Error inserting song ${index + 1}:`, err.message);
-          } else {
-            console.log(`Added song: ${song.song_name} by ${song.artist_name} (ID: ${this.lastID})`);
-          }
+      if (row.count === 0) {
+        console.log('Table is empty. Adding sample songs...');
+        const insertQuery = 'INSERT INTO songs (song_name, artist_name, lyrics_spanish, lyrics_english, lyrics_german, youtube_link) VALUES (?, ?, ?, ?, ?, ?)';
+        let remaining = sampleSongs.length;
+        if(remaining === 0){ if(done) done(); return; }
+        sampleSongs.forEach((song, index) => {
+          existingDb.run(insertQuery, [song.song_name, song.artist_name, song.lyrics_spanish, song.lyrics_english || null, song.lyrics_german || null, song.youtube_link], function(err) {
+            if (err) {
+              console.error(`Error inserting song ${index + 1}:`, err.message);
+            } else {
+              console.log(`Added song: ${song.song_name} by ${song.artist_name} (ID: ${this.lastID})`);
+            }
+            remaining -= 1;
+            if(remaining === 0 && done) done();
+          });
         });
-      });
-      
-      console.log('Sample songs added successfully!');
-    } else {
-      console.log(`Table already contains ${row.count} songs. Skipping sample data insertion.`);
-    }
+      } else {
+        console.log(`Table already contains ${row.count} songs. Skipping sample data insertion.`);
+        if (done) done();
+      }
+    });
   });
-});
+}
 
-// Close database connection after initialization
-setTimeout(() => {
-  db.close((err) => {
-    if (err) {
-      console.error('Error closing database:', err.message);
-    } else {
-      console.log('Database initialization completed. Connection closed.');
-    }
+module.exports = { seedWithDb };
+
+// When executed directly: open its own DB, seed, then close
+if (require.main === module) {
+  seedWithDb(db, () => {
+    setTimeout(() => {
+      db.close((err) => {
+        if (err) {
+          console.error('Error closing database:', err.message);
+        } else {
+          console.log('Database initialization completed. Connection closed.');
+        }
+      });
+    }, 500);
   });
-}, 2000);
+}

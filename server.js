@@ -52,7 +52,7 @@ const db = new sqlite3.Database(dbFilePath, (err) => {
   }
 });
 
-// Create songs table if it doesn't exist
+// Create/seed songs table if it doesn't exist
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS songs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,6 +64,15 @@ db.serialize(() => {
     youtube_link TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
+  // Optional auto-seed on first boot if ENABLE_AUTOINIT is set (e.g., on free hosts without shell)
+  if (String(process.env.ENABLE_AUTOINIT || '').toLowerCase() === 'true') {
+    try {
+      const { seedWithDb } = require('./init-database');
+      seedWithDb(db, () => console.log('Auto-initialization complete.'));
+    } catch (e) {
+      console.warn('Auto-initialization skipped:', e && e.message);
+    }
+  }
 });
 
 // API Routes

@@ -1,0 +1,8 @@
+[build]
+  command = ""
+  publish = "."
+
+# Optional: set environment for the static frontend
+[build.environment]
+  NODE_VERSION = "18"
+
