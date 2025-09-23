@@ -1,12 +1,14 @@
 const sqlite3 = require('sqlite3').verbose();
 
-// Create database connection
-const db = new sqlite3.Database('./songs.db', (err) => {
+// Create database connection (supports DB_PATH for persistent disks)
+const path = require('path');
+const dbFilePath = process.env.DB_PATH || path.join(__dirname, 'songs.db');
+const db = new sqlite3.Database(dbFilePath, (err) => {
   if (err) {
     console.error('Error opening database:', err.message);
     process.exit(1);
   }
-  console.log('Connected to the SQLite database for initialization.');
+  console.log('Connected to the SQLite database for initialization at', dbFilePath);
 });
 
 // Sample song data from your existing app

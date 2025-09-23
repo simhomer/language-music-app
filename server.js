@@ -42,12 +42,13 @@ app.get('/admin.html', basicAuth, (req, res) => {
 // Serve static files from the root directory
 app.use(express.static(path.join(__dirname)));
 
-// Database setup
-const db = new sqlite3.Database('./songs.db', (err) => {
+// Database setup (supports persistent disks via DB_PATH)
+const dbFilePath = process.env.DB_PATH || path.join(__dirname, 'songs.db');
+const db = new sqlite3.Database(dbFilePath, (err) => {
   if (err) {
     console.error('Error opening database:', err.message);
   } else {
-    console.log('Connected to the SQLite database.');
+    console.log('Connected to the SQLite database at', dbFilePath);
   }
 });
 

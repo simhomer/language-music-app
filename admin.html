@@ -296,6 +296,12 @@
         }
         const API_ORIGIN = resolveBackendOrigin();
         const API_BASE = `${API_ORIGIN}/api/songs`;
+
+        // If this admin page is opened on a different origin (e.g., Netlify),
+        // redirect to the backend's protected admin page so Basic Auth applies.
+        if (API_ORIGIN && location.origin !== API_ORIGIN) {
+            window.location.replace(`${API_ORIGIN}/admin.html`);
+        }
         let allSongs = [];
         
         // Utility functions
