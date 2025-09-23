@@ -1,0 +1,2045 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Language Music App</title>
+<style>
+:root{--max-width:900px;--text:#111;--muted:#555;--border:#eee;--surface:#fafafa}
+*{box-sizing:border-box}
+body{margin:0;background:#b8b8b8;color:var(--text);font:16px/1.6 "American Typewriter",serif}
+main{max-width:var(--max-width);margin:48px auto;padding:0 20px;display:flex;flex-direction:column;align-items:center}
+h1{font-size:32px;margin:0 0 24px;text-align:center}
+section{margin-top:24px}
+.song-title{font-weight:600;margin:0 0 8px}
+/* Toolbar container (curved like lyrics container) */
+.toolbar{position:sticky;top:0;z-index:20;width:calc(70% + 150px);max-width:100%;margin:8px auto 24px;background:#d1d1d1;border:1px solid var(--border);border-radius:8px;padding:12px;transition:transform .2s ease,opacity .2s ease}
+.toolbar.toolbar--hidden{transform:translateY(-100%);opacity:0;pointer-events:none}
+.toolbar-inner{display:flex;flex-direction:column;gap:10px;align-items:stretch;justify-content:flex-start;width:100%;margin:0 auto;position:relative}
+.toolbar-inner label{white-space:normal;display:block}
+.toolbar-inner select{max-width:none;width:100%}
+.toolbar .add-song{align-self:flex-end}
+.toolbar-inner .spacer{flex:1}
+.toolbar .add-song{margin-left:auto;background:#27ae60;color:#fff;border:1px solid #1f8a4c;border-radius:8px;padding:8px 12px;text-decoration:none;font-weight:600}
+.toolbar .add-song:hover{background:#229954}
+.toolbar-inner label{font-size:14px;color:#333}
+.toolbar-inner select{padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fff}
+.lyrics{white-space:pre-wrap;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;color:var(--muted)}
+.tooltip{position:absolute;max-width:420px;background:#111;color:#fff;border:1px solid #222;border-radius:8px;padding:10px 12px;font-size:14px;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:30;display:none}
+.tooltip.tooltip--left{transform:translateX(-100%)}
+.tooltip.tooltip--en{background:#126e36;border-color:#0e5c2d}
+.tooltip.tooltip--de{background:#1f4fbf;border-color:#193f99}
+.tooltip h4{margin:0 0 6px;font-size:15px;color:#fff}
+.tooltip p{margin:0}
+.word-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.word-chip{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:12px;padding:6px 8px;font-size:13px}
+.word-chip b{font-weight:600}
+.note{font-size:14px;color:var(--muted);margin-top:8px;text-align:center}
+.promo{display:flex;justify-content:center;margin:32px 0}
+.promo a{display:inline-block}
+.promo img{max-width:100%;height:auto;display:block}
+/* Keep lyrics container width equal to toolbar width */
+.lyrics-shell{width:calc(70% + 150px);max-width:100%;margin:0 auto}
+/* Keep lyrics container width equal to toolbar width */
+.lyrics-shell{width:calc(70% + 150px);max-width:100%;margin:0 auto}
+.grid{display:grid;grid-template-columns:1fr;gap:16px;justify-items:center}
+.cell{background:#d1d1d1;border:1px solid var(--border);border-radius:8px;padding:12px;width:calc(70% + 150px);max-width:100%;margin:0 auto}
+.col-title{font-weight:600;margin:0 0 8px}
+/* Make headers sticky */
+.col-title{position:sticky;top:0;background:#fff;z-index:10;padding:4px 0;box-shadow:0 1px 0 rgba(0,0,0,0.06)}
+.dark-title{background:#fff;color:#000}
+div.ta{width:100%;min-height:280px;padding:14px;border:1px solid var(--border);border-radius:8px;background:#d1d1d1;color:var(--text);font:16px/1.7 "American Typewriter",serif;white-space:pre-wrap;outline:none;margin:0 auto}
+.cell.dark{background:#d1d1d1;border-color:#ccc}
+.cell.dark .ta{background:#d1d1d1}
+#ta-de, #ta-en{color:#000}
+.hl{background:#fff3b0;display:inline-block;padding:8px 10px;border-radius:14px;box-shadow:0 2px 6px rgba(0,0,0,.08);margin:2px 0}
+/* Ensure marks remain readable on black background */
+.cell.dark mark.hl{color:#000;background:#fff3b0}
+/* removed controls (Lock Lines) */
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+@media (min-width:901px) and (max-width:1200px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Mobile optimizations */
+@media (max-width:600px){
+ main{padding:0 12px}
+ h1{font-size:24px}
+ .toolbar{gap:8px}
+ div.ta{width:100%;min-height:200px;font-size:15px;line-height:1.6}
+ .note{text-align:center}
+ /* Tooltips become full-width stacked panels at the bottom */
+ .tooltip{position:fixed;left:12px;right:12px;max-width:none;z-index:1000}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Learn Spanish and German from your favorite lyrics.<br>Learn intelligently.</h1>
+<div class="toolbar">
+<div class="toolbar-inner">
+<label for="mode">Translate word by word:</label>
+<select id="mode">
+ <option value="no" selected>No</option>
+ <option value="yes">Yes</option>
+ </select>
+<label for="song">Song:</label>
+<select id="song">
+ <option value="shakira">Shakira — Pies Descalzos, Sueños Blancos</option>
+ <option value="bb-dtmf">Bad Bunny — DtMF</option>
+ <option value="cynl">Tuna Decana — Canta y No Llores</option>
+ <option value="ivan">TONY SOPRANOV BAND — Las Aventuras de Ivan</option>
+</select>
+  <span class="spacer"></span>
+  <a id="addSongBtn" class="add-song" href="#" target="_blank" rel="noopener noreferrer">Add own song</a>
+</div>
+</div>
+<section>
+<p class="song-title" style="display:none"> <span id="artist" tabindex="0">Shakira</span> — <span id="songTitle">Pies Descalzos, Sueños Blancos</span></p>
+<div id="tooltip" class="tooltip" role="tooltip" aria-hidden="true"></div>
+<div id="tooltip-en" class="tooltip tooltip--en" role="tooltip" aria-hidden="true"></div>
+<div id="tooltip-de" class="tooltip tooltip--de" role="tooltip" aria-hidden="true"></div>
+<div class="lyrics-shell">
+<div id="ta-es" class="ta" contenteditable="true" data-raw="" placeholder="Paste Spanish lyrics or an excerpt you have rights to.">[Letra de "Pies Descalzos, Sueños Blancos"]
+
+
+[Coro]
+Perteneciste a una raza antigua
+De pies descalzos
+Y de sueños blancos
+Fuiste polvo, polvo eres
+Piensa que el hierro
+Siempre al calor es blando
+
+
+[Verso 1]
+Tú mordiste la manzana
+Y renunciaste al paraíso
+Y condenaste a una serpiente
+Siendo tú el que así lo quiso
+Por milenios y milenios
+Permaneciste desnudo
+Y te enfrentaste a dinosaurios
+Bajo un techo y sin escudo
+
+
+[Pre-Coro]
+Y ahora estás aquí
+Queriendo ser feliz
+Cuando no te importó
+Un pepino tu destino
+
+
+[Coro]
+Perteneciste a una raza antigua
+De pies descalzos
+Y de sueños blancos
+Fuiste polvo, polvo eres
+Piensa que el hierro
+Siempre al calor es blando
+
+
+[Verso 2]
+Construiste un mundo exacto
+De acabados tan perfectos
+Cada cosa calculada
+En su espacio y a su tiempo
+Yo que soy un caos completo
+Las entradas, las salidas
+Los nombres y las medidas
+No me caben en los sesos
+
+
+[Pre-Coro]
+Y ahora estás aquí
+Queriendo ser feliz
+Cuando no te importó
+Un pepino tu destino
+
+
+[Coro]
+Perteneciste a una raza antigua
+De pies descalzos
+Y de sueños blancos
+Fuiste polvo, polvo eres
+Piensa que el hierro
+Siempre al calor es
+Perteneciste a una raza antigua
+De pies descalzos
+Y de sueños blancos
+Fuiste polvo, polvo eres
+Piensa que el hierro
+Siempre al calor es blando
+
+
+[Puente]
+Saludar al vecino
+Acostarse a una hora
+Trabajar cada día
+Para vivir en la vida
+Contestar solo aquello
+Y sentir solo esto
+Y que Dios nos ampare
+De malos pensamientos
+Cumplir con las tareas
+Asistir al colegio
+¿Que dirá la familia
+Si eres un fracasado?
+Ponte siempre zapatos
+No hagas ruido en la mesa
+Usa medias veladas
+Y corbata en las fiestas
+Las mujeres se casan
+Siempre antes de 30
+Si no vestirán santos
+Y aunque así no lo quieran
+Y en la fiesta de quince
+Es mejor no olvidar
+Una fina champaña
+Y bailar bien el vals
+
+
+[Outro]
+Y bailar bien el vals</div>
+<p id="listen" class="note"><span>Listen to the song: </span><a id="listenLink" href="#" target="_blank" rel="noopener noreferrer">Open on YouTube</a></p>
+</div>
+<!-- Hidden English/Deutsch containers retained for tooltips -->
+<div style="display:none">
+<p class="col-title dark-title">English</p>
+<div class="cell dark"><div id="ta-en" class="ta" contenteditable="true" data-raw="" placeholder="Add your English translation.">[Lyrics of "Bare Feet, White Dreams"]
+
+
+[Chorus]
+You belonged to an ancient race
+With bare feet
+And with white dreams
+You were dust, dust you are
+Think that iron
+Is always soft when heated
+
+
+[Verse 1]
+You bit into the apple
+And gave up paradise
+And you condemned a serpent
+While you were the one who wanted it that way
+For millennia and millennia
+You remained naked
+And you faced dinosaurs
+Under a roof and without a shield
+
+
+[Pre-Chorus]
+And now you’re here
+Wanting to be happy
+When you didn’t care
+A whit about your fate
+
+
+[Chorus]
+You belonged to an ancient race
+With bare feet
+And with white dreams
+You were dust, dust you are
+Think that iron
+Is always soft when heated
+
+
+[Verse 2]
+You built an exact world
+With finishes so perfect
+Everything calculated
+In its place and in its time
+I, who am complete chaos
+The entrances, the exits
+The names and the measures
+Don’t fit inside my head
+
+
+[Pre-Chorus]
+And now you’re here
+Wanting to be happy
+When you didn’t care
+A whit about your fate
+
+
+[Chorus]
+You belonged to an ancient race
+With bare feet
+And with white dreams
+You were dust, dust you are
+Think that iron
+Is always at heat
+You belonged to an ancient race
+With bare feet
+And with white dreams
+You were dust, dust you are
+Think that iron
+Is always soft when heated
+
+
+[Bridge]
+Greet the neighbor
+Go to bed at a set hour
+Work every day
+To live in this life
+Only answer that
+And only feel this
+And may God protect us
+From evil thoughts
+Do your homework
+Attend the school
+What will the family say
+If you’re a failure?
+Always wear shoes
+Don’t make noise at the table
+Wear sheer stockings
+And a tie at parties
+Women get married
+Always before thirty
+If not, they’ll dress saints
+Even if they don’t want to
+And at the quinceañera
+It’s better not to forget
+A fine champagne
+And to dance the waltz well
+
+
+[Outro]
+And to dance the waltz well</div></div>
+</div>
+<div style="display:none">
+<p class="col-title dark-title">German</p>
+<div class="cell dark"><div id="ta-de" class="ta" contenteditable="true" data-raw="" placeholder="Add your German translation.">[Text von "Barfuße, weiße Träume"]
+
+
+[Refrain]
+Du gehörtest zu einer alten Rasse
+Mit baren Füßen
+Und mit weißen Träumen
+Du warst Staub, Staub bist du
+Denk daran, dass das Eisen
+Am Feuer immer weich wird
+
+
+[Strophe 1]
+Du hast in den Apfel gebissen
+Und auf das Paradies verzichtet
+Und du hast eine Schlange verurteilt
+Während du derjenige warst, der es so wollte
+Über Jahrtausende und Jahrtausende
+Bist du nackt geblieben
+Und hast dich Dinosauriern gestellt
+Unter einem Dach und ohne Schild
+
+
+[Pre-Refrain]
+Und jetzt bist du hier
+Willst glücklich sein
+Als dir dein Schicksal
+Nicht die Bohne wichtig war
+
+
+[Refrain]
+Du gehörtest zu einer alten Rasse
+Mit baren Füßen
+Und mit weißen Träumen
+Du warst Staub, Staub bist du
+Denk daran, dass das Eisen
+Am Feuer immer weich wird
+
+
+[Strophe 2]
+Du bautest eine exakte Welt
+Mit so perfekten Abschlüssen
+Alles durchkalkuliert
+An seinem Platz und zu seiner Zeit
+Ich, die ein völliges Chaos bin
+Die Eingänge, die Ausgänge
+Die Namen und die Maße
+Gehen mir nicht in den Schädel
+
+
+[Pre-Refrain]
+Und jetzt bist du hier
+Willst glücklich sein
+Als dir dein Schicksal
+Nicht die Bohne wichtig war
+
+
+[Refrain]
+Du gehörtest zu einer alten Rasse
+Mit baren Füßen
+Und mit weißen Träumen
+Du warst Staub, Staub bist du
+Denk daran, dass das Eisen
+Immer am Feuer ist
+Du gehörtest zu einer alten Rasse
+Mit baren Füßen
+Und mit weißen Träumen
+Du warst Staub, Staub bist du
+Denk daran, dass das Eisen
+Am Feuer immer weich wird
+
+
+[Bridge]
+Den Nachbarn grüßen
+Zu einer bestimmten Uhrzeit schlafen gehen
+Jeden Tag arbeiten
+Um im Leben zu leben
+Nur jenes beantworten
+Und nur dieses fühlen
+Und Gott schütze uns
+Vor bösen Gedanken
+Die Aufgaben erledigen
+Die Schule besuchen
+Was wird die Familie sagen,
+Wenn du ein Versager bist?
+Trag immer Schuhe
+Mach keinen Lärm am Tisch
+Trage Feinstrümpfe
+Und Krawatte auf Festen
+Frauen heiraten
+Immer vor dreißig
+Sonst bekleiden sie Heilige
+Auch wenn sie es nicht wollen
+Und auf der Fünfzehnjahrfeier
+Vergiss man besser nicht
+Einen feinen Champagner
+Und tanz schön den Walzer
+
+
+[Outro]
+Und tanz schön den Walzer</div></div>
+</div>
+<p class="note">More from the same team:</p>
+</section>
+
+<section>
+<div class="promo">
+ <a href="https://simhomer.myshopify.com/" target="_blank" rel="noopener noreferrer">
+  <img src="./WanderWalls%20Bottom%20Banner.jpg" alt="WanderWalls - artistic aerial photography - Shop Now">
+ </a>
+ </div>
+ </section>
+<script>
+const areas = [
+ document.getElementById('ta-es'),
+ document.getElementById('ta-de'),
+ document.getElementById('ta-en')
+];
+
+function getText(el){
+ return el.innerText || '';
+}
+
+function setPlainText(el, text){
+ el.textContent = text;
+ el.dataset.raw = text;
+}
+
+function ensureRaw(el){
+ if(typeof el.dataset.raw !== 'string') el.dataset.raw = getText(el);
+}
+
+function countLinesFromText(value){
+ if(value.length === 0) return 1;
+ return value.split(/\r?\n/).length;
+}
+
+function padToLines(text, targetLines){
+ const currentLines = countLinesFromText(text);
+ if(currentLines >= targetLines) return text;
+ const padCount = targetLines - currentLines;
+ const trailingNewline = text.endsWith('\n') || text.length === 0 ? '' : '\n';
+ return text + trailingNewline + Array(padCount).fill('').join('\n');
+}
+
+let isSyncingScroll = false;
+function syncScroll(source){
+ if(isSyncingScroll) return;
+ isSyncingScroll = true;
+ if(source === areas[0]){
+  // Master: align by line index for accurate eye-level sync
+  const lineHeight = getLineHeightPx(source);
+  const index = Math.round(source.scrollTop / (lineHeight || 1));
+  [areas[1], areas[2]].forEach(el => {
+   const lh = getLineHeightPx(el);
+   el.scrollTop = Math.max(0, index * (lh || 1));
+  });
+ } else {
+  // Fallback: non-master scroll uses ratio to follow
+  const ratio = source.scrollTop / (source.scrollHeight - source.clientHeight || 1);
+  areas.forEach(a => {
+   if(a === source) return;
+   a.scrollTop = ratio * (a.scrollHeight - a.clientHeight);
+  });
+ }
+ isSyncingScroll = false;
+}
+
+function lockLineCounts(){
+ const maxLines = Math.max(...areas.map(a => countLinesFromText(getText(a))));
+ areas.forEach(a => {
+  const padded = padToLines(getText(a), maxLines);
+  setPlainText(a, padded);
+ });
+}
+
+// Highlighting logic: when selecting in Spanish, highlight corresponding line in DE/EN
+function clearHighlights(el){
+ const t = el.dataset.raw || getText(el);
+ setPlainText(el, t);
+}
+
+function getSelectionLineIndexIn(container){
+ const sel = window.getSelection();
+ if(!sel || sel.isCollapsed) return -1;
+ if(!container.contains(sel.anchorNode)) return -1;
+ const range = sel.getRangeAt(0);
+ const preRange = document.createRange();
+ preRange.selectNodeContents(container);
+ preRange.setEnd(range.startContainer, range.startOffset);
+ const preText = preRange.toString();
+ const lineIdx = preText.split(/\r?\n/).length - 1;
+ return lineIdx;
+}
+
+function highlightLine(el, index){
+ ensureRaw(el);
+ const raw = el.dataset.raw || getText(el);
+ const lines = raw.split(/\r?\n/);
+ const safeIdx = Math.max(0, Math.min(index, lines.length - 1));
+ const html = lines.map((ln, i) => i === safeIdx ? '<mark class="hl">'+ln.replace(/</g,'&lt;')+'</mark>' : ln.replace(/</g,'&lt;')).join('<br>');
+ el.innerHTML = html;
+}
+
+function updateHighlightsFromSelection(){
+ const idx = getSelectionLineIndexIn(areas[0]);
+ const sel = window.getSelection();
+ const q = sel && !sel.isCollapsed && areas[0].contains(sel.anchorNode) ? sel.toString().trim() : '';
+ if(idx < 0){
+  [areas[1], areas[2]].forEach(clearHighlights);
+  return;
+ }
+ // If a query (word/phrase) is selected, try to highlight the match inside the same line
+ if(q){
+  [areas[1], areas[2]].forEach(el => {
+   const foundIdx = findLineIndexForQuery(el, q);
+   const targetIdx = foundIdx >= 0 ? foundIdx : idx;
+   highlightMatchInLine(el, targetIdx, q);
+   scrollToLine(el, targetIdx);
+  });
+ } else {
+  [areas[1], areas[2]].forEach(el => highlightLine(el, idx));
+ }
+ // Ensure translations are scrolled to the same line index for eye-level alignment
+ [areas[1], areas[2]].forEach(el => scrollToLine(el, idx));
+}
+
+function escapeRegExp(str){
+ return str.replace(/[.*+?^${}()|[\]\\]/g, r => '\\' + r);
+}
+
+function highlightMatchInLine(el, index, query){
+ ensureRaw(el);
+ const raw = el.dataset.raw || getText(el);
+ const lines = raw.split(/\r?\n/);
+ const safeIdx = Math.max(0, Math.min(index, lines.length - 1));
+ const pattern = new RegExp(escapeRegExp(query), 'gi');
+ const html = lines.map((ln, i) => {
+  if(i !== safeIdx) return ln.replace(/</g,'&lt;');
+  if(!query) return '<mark class="hl">'+ln.replace(/</g,'&lt;')+'</mark>';
+  const replaced = ln.replace(pattern, m => '<mark class="hl">'+m+'</mark>');
+  // Escape remaining '<' not part of our marks
+  return replaced.replace(/&(?![a-z#]+;)|</g, ch => ch === '<' ? '&lt;' : '&amp;');
+ }).join('<br>');
+ el.innerHTML = html;
+ // Fallback: if no mark was inserted (no match in the line), highlight entire line
+ if(!el.innerHTML.includes('<mark')){
+  highlightLine(el, index);
+ }
+}
+
+function findLineIndexForQuery(el, query){
+ ensureRaw(el);
+ const raw = el.dataset.raw || getText(el);
+ if(!query) return -1;
+ const qLower = query.toLowerCase();
+ const lines = raw.split(/\r?\n/);
+ for(let i=0;i<lines.length;i++){
+  if(lines[i].toLowerCase().includes(qLower)) return i;
+ }
+ return -1;
+}
+
+function getLineHeightPx(el){
+ const cs = window.getComputedStyle(el);
+ let lh = cs.lineHeight;
+ if(lh === 'normal'){ return 24; }
+ const n = parseFloat(lh);
+ if(Number.isNaN(n)) return 24;
+ return n;
+}
+
+function scrollToLine(el, index){
+ const lineHeight = getLineHeightPx(el);
+ const targetTop = Math.max(0, index * lineHeight - (el.clientHeight - lineHeight) / 2);
+ el.scrollTop = targetTop;
+}
+
+// Auto-enable line lock on load for better alignment
+window.addEventListener('DOMContentLoaded', async () => {
+ // Load songs from API first
+ await loadSongsFromAPI();
+ 
+ // Restore from localStorage after songs are loaded
+ const savedSong = localStorage.getItem('songSelection');
+ const savedEs = localStorage.getItem('text_es');
+ const savedDe = localStorage.getItem('text_de');
+ const savedEn = localStorage.getItem('text_en');
+ 
+ // If we have saved song selection, load it
+ if(savedSong){
+  const song = songsData.find(s => s.id == savedSong);
+  if(song) {
+   loadSongById(savedSong);
+  }
+ }
+ 
+ if(savedEs || savedDe || savedEn){
+  setPlainText(areas[0], savedEs || getText(areas[0]));
+  setPlainText(areas[1], savedDe || getText(areas[1]));
+  setPlainText(areas[2], savedEn || getText(areas[2]));
+ } else {
+  // Ensure initial raw cache is set
+  areas.forEach(a => ensureRaw(a));
+ }
+ lockLineCounts();
+});
+
+areas.forEach((a, idx) => {
+ // Initialize raw cache
+ ensureRaw(a);
+ a.addEventListener('input', () => {
+  // strip any highlights to ensure raw reflects real text
+  const t = getText(a);
+  setPlainText(a, t);
+  lockLineCounts();
+  if(idx === 0){ updateHighlightsFromSelection(); }
+  // Persist after each edit
+  localStorage.setItem('text_es', getText(areas[0]));
+  localStorage.setItem('text_de', getText(areas[1]));
+  localStorage.setItem('text_en', getText(areas[2]));
+ });
+ a.addEventListener('scroll', () => syncScroll(a));
+});
+
+// Selection-based highlight events
+areas[0].addEventListener('mouseup', updateHighlightsFromSelection);
+areas[0].addEventListener('keyup', (e) => {
+ if(e.key === 'Shift' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown'){
+  updateHighlightsFromSelection();
+ }
+});
+document.addEventListener('selectionchange', () => {
+ // only react if selection is within Spanish
+ const sel = window.getSelection();
+ if(sel && areas[0].contains(sel.anchorNode)){
+  updateHighlightsFromSelection();
+ }
+});
+
+// Hide toolbar on scroll down, show on scroll up
+let lastScrollY = window.scrollY;
+const toolbar = document.querySelector('.toolbar');
+window.addEventListener('scroll', () => {
+ const currentY = window.scrollY;
+ if(currentY > lastScrollY + 8){
+  toolbar.classList.add('toolbar--hidden');
+ } else if(currentY < lastScrollY - 8){
+  toolbar.classList.remove('toolbar--hidden');
+ }
+ lastScrollY = currentY;
+}, {passive:true});
+
+// Song switching
+const select = document.getElementById('song');
+const artistEl = document.getElementById('artist');
+const songTitleEl = document.getElementById('songTitle');
+const tooltipEl = document.getElementById('tooltip');
+const tooltipEn = document.getElementById('tooltip-en');
+const tooltipDe = document.getElementById('tooltip-de');
+const spanishArea = document.getElementById('ta-es');
+const listen = document.getElementById('listen');
+const listenLink = document.getElementById('listenLink');
+const modeSelect = document.getElementById('mode');
+let wordByWord = (localStorage.getItem('translate_mode') || 'no') === 'yes';
+let songsData = []; // Store songs from API
+// Resolve API base dynamically for deployments where frontend and backend are on different origins.
+// Priority: query param backend=..., then localStorage.backend_origin, else same origin, else localhost for file://
+function resolveBackendOrigin(){
+  const params = new URLSearchParams(location.search);
+  const fromQuery = params.get('backend');
+  if(fromQuery){
+    try{ localStorage.setItem('backend_origin', fromQuery); }catch(e){}
+    return fromQuery.replace(/\/$/, '');
+  }
+  try{
+    const stored = localStorage.getItem('backend_origin');
+    if(stored) return stored.replace(/\/$/, '');
+  }catch(e){}
+  if(location.protocol === 'file:') return 'http://localhost:3000';
+  return '';
+}
+const API_BASE = resolveBackendOrigin();
+
+// API functions
+async function fetchSongs() {
+  try {
+    const response = await fetch(`${API_BASE}/api/songs`);
+    if (!response.ok) throw new Error('Failed to fetch songs');
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching songs:', error);
+    throw error;
+  }
+}
+
+async function loadSongsFromAPI() {
+  try {
+    songsData = await fetchSongs();
+    populateSongDropdown();
+    // Load the first song by default
+    if (songsData.length > 0) {
+      loadSongById(songsData[0].id);
+    }
+  } catch (error) {
+    console.error('Failed to load songs:', error);
+    // Fallback to hardcoded data if API fails
+    loadFallbackSongs();
+  }
+}
+
+// Configure "Add a Song" to point to backend admin
+function updateAddSongLink(){
+  const btn = document.getElementById('addSongBtn');
+  if(!btn) return;
+  const origin = API_BASE || (location.protocol === 'file:' ? 'http://localhost:3000' : location.origin);
+  btn.href = origin + '/admin.html';
+}
+updateAddSongLink();
+
+function populateSongDropdown() {
+  // Clear existing options
+  select.innerHTML = '';
+  
+  songsData.forEach(song => {
+    const option = document.createElement('option');
+    option.value = song.id;
+    option.textContent = `${song.artist_name} — ${song.song_name}`;
+    select.appendChild(option);
+  });
+}
+
+function loadSongById(songId) {
+  const song = songsData.find(s => s.id == songId);
+  if (!song) return;
+  
+  // Set the song data
+  setPlainText(areas[0], song.lyrics_spanish || '');
+  setPlainText(areas[1], song.lyrics_german || '');
+  setPlainText(areas[2], song.lyrics_english || '');
+  
+  // Update UI elements
+  artistEl.textContent = song.artist_name;
+  songTitleEl.textContent = song.song_name;
+  artistEl.dataset.wiki = song.artist_name.replace(/\s+/g, '_');
+  
+  // Update listen link
+  if (listenLink) {
+    listenLink.href = song.youtube_link;
+    listenLink.textContent = song.song_name;
+  }
+  
+  // Update dropdown selection
+  select.value = song.id;
+  
+  // Lock line counts and update highlights
+  lockLineCounts();
+  updateHighlightsFromSelection();
+}
+
+// Fallback function for when API fails
+function loadFallbackSongs() {
+  console.log('Loading fallback songs...');
+  // Create fallback song data
+  songsData = [
+    {
+      id: 1,
+      song_name: "Pies Descalzos, Sueños Blancos",
+      artist_name: "Shakira",
+      lyrics_spanish: `[Letra de "Pies Descalzos, Sueños Blancos"]
+
+[Coro]
+Perteneciste a una raza antigua
+De pies descalzos
+Y de sueños blancos
+Fuiste polvo, polvo eres
+Piensa que el hierro
+Siempre al calor es blando
+
+[Verso 1]
+Tú mordiste la manzana
+Y renunciaste al paraíso
+Y condenaste a una serpiente
+Siendo tú el que así lo quiso
+Por milenios y milenios
+Permaneciste desnudo
+Y te enfrentaste a dinosaurios
+Bajo un techo y sin escudo
+
+[Pre-Coro]
+Y ahora estás aquí
+Queriendo ser feliz
+Cuando no te importó
+Un pepino tu destino
+
+[Coro]
+Perteneciste a una raza antigua
+De pies descalzos
+Y de sueños blancos
+Fuiste polvo, polvo eres
+Piensa que el hierro
+Siempre al calor es blando
+
+[Verso 2]
+Construiste un mundo exacto
+De acabados tan perfectos
+Cada cosa calculada
+En su espacio y a su tiempo
+Yo que soy un caos completo
+Las entradas, las salidas
+Los nombres y las medidas
+No me caben en los sesos
+
+[Pre-Coro]
+Y ahora estás aquí
+Queriendo ser feliz
+Cuando no te importó
+Un pepino tu destino
+
+[Coro]
+Perteneciste a una raza antigua
+De pies descalzos
+Y de sueños blancos
+Fuiste polvo, polvo eres
+Piensa que el hierro
+Siempre al calor es
+Perteneciste a una raza antigua
+De pies descalzos
+Y de sueños blancos
+Fuiste polvo, polvo eres
+Piensa que el hierro
+Siempre al calor es blando
+
+[Puente]
+Saludar al vecino
+Acostarse a una hora
+Trabajar cada día
+Para vivir en la vida
+Contestar solo aquello
+Y sentir solo esto
+Y que Dios nos ampare
+De malos pensamientos
+Cumplir con las tareas
+Asistir al colegio
+¿Que dirá la familia
+Si eres un fracasado?
+Ponte siempre zapatos
+No hagas ruido en la mesa
+Usa medias veladas
+Y corbata en las fiestas
+Las mujeres se casan
+Siempre antes de 30
+Si no vestirán santos
+Y aunque así no lo quieran
+Y en la fiesta de quince
+Es mejor no olvidar
+Una fina champaña
+Y bailar bien el vals
+
+[Outro]
+Y bailar bien el vals`,
+      lyrics_english: `[Lyrics of "Bare Feet, White Dreams"]
+
+[Chorus]
+You belonged to an ancient race
+With bare feet
+And with white dreams
+You were dust, dust you are
+Think that iron
+Is always soft when heated
+
+[Verse 1]
+You bit into the apple
+And gave up paradise
+And you condemned a serpent
+While you were the one who wanted it that way
+For millennia and millennia
+You remained naked
+And you faced dinosaurs
+Under a roof and without a shield
+
+[Pre-Chorus]
+And now you're here
+Wanting to be happy
+When you didn't care
+A whit about your fate
+
+[Chorus]
+You belonged to an ancient race
+With bare feet
+And with white dreams
+You were dust, dust you are
+Think that iron
+Is always soft when heated
+
+[Verse 2]
+You built an exact world
+With finishes so perfect
+Everything calculated
+In its place and in its time
+I, who am complete chaos
+The entrances, the exits
+The names and the measures
+Don't fit inside my head
+
+[Pre-Chorus]
+And now you're here
+Wanting to be happy
+When you didn't care
+A whit about your fate
+
+[Chorus]
+You belonged to an ancient race
+With bare feet
+And with white dreams
+You were dust, dust you are
+Think that iron
+Is always at heat
+You belonged to an ancient race
+With bare feet
+And with white dreams
+You were dust, dust you are
+Think that iron
+Is always soft when heated
+
+[Bridge]
+Greet the neighbor
+Go to bed at a set hour
+Work every day
+To live in this life
+Only answer that
+And only feel this
+And may God protect us
+From evil thoughts
+Do your homework
+Attend the school
+What will the family say
+If you're a failure?
+Always wear shoes
+Don't make noise at the table
+Wear sheer stockings
+And a tie at parties
+Women get married
+Always before thirty
+If not, they'll dress saints
+Even if they don't want to
+And at the quinceañera
+It's better not to forget
+A fine champagne
+And to dance the waltz well
+
+[Outro]
+And to dance the waltz well`,
+      lyrics_german: `[Text von "Barfuße, weiße Träume"]
+
+[Refrain]
+Du gehörtest zu einer alten Rasse
+Mit baren Füßen
+Und mit weißen Träumen
+Du warst Staub, Staub bist du
+Denk daran, dass das Eisen
+Am Feuer immer weich wird
+
+[Strophe 1]
+Du hast in den Apfel gebissen
+Und auf das Paradies verzichtet
+Und du hast eine Schlange verurteilt
+Während du derjenige warst, der es so wollte
+Über Jahrtausende und Jahrtausende
+Bist du nackt geblieben
+Und hast dich Dinosauriern gestellt
+Unter einem Dach und ohne Schild
+
+[Pre-Refrain]
+Und jetzt bist du hier
+Willst glücklich sein
+Als dir dein Schicksal
+Nicht die Bohne wichtig war
+
+[Refrain]
+Du gehörtest zu einer alten Rasse
+Mit baren Füßen
+Und mit weißen Träumen
+Du warst Staub, Staub bist du
+Denk daran, dass das Eisen
+Am Feuer immer weich wird
+
+[Strophe 2]
+Du bautest eine exakte Welt
+Mit so perfekten Abschlüssen
+Alles durchkalkuliert
+An seinem Platz und zu seiner Zeit
+Ich, die ein völliges Chaos bin
+Die Eingänge, die Ausgänge
+Die Namen und die Maße
+Gehen mir nicht in den Schädel
+
+[Pre-Refrain]
+Und jetzt bist du hier
+Willst glücklich sein
+Als dir dein Schicksal
+Nicht die Bohne wichtig war
+
+[Refrain]
+Du gehörtest zu einer alten Rasse
+Mit baren Füßen
+Und mit weißen Träumen
+Du warst Staub, Staub bist du
+Denk daran, dass das Eisen
+Immer am Feuer ist
+Du gehörtest zu einer alten Rasse
+Mit baren Füßen
+Und mit weißen Träumen
+Du warst Staub, Staub bist du
+Denk daran, dass das Eisen
+Am Feuer immer weich wird
+
+[Bridge]
+Den Nachbarn grüßen
+Zu einer bestimmten Uhrzeit schlafen gehen
+Jeden Tag arbeiten
+Um im Leben zu leben
+Nur jenes beantworten
+Und nur dieses fühlen
+Und Gott schütze uns
+Vor bösen Gedanken
+Die Aufgaben erledigen
+Die Schule besuchen
+Was wird die Familie sagen,
+Wenn du ein Versager bist?
+Trag immer Schuhe
+Mach keinen Lärm am Tisch
+Trage Feinstrümpfe
+Und Krawatte auf Festen
+Frauen heiraten
+Immer vor dreißig
+Sonst bekleiden sie Heilige
+Auch wenn sie es nicht wollen
+Und auf der Fünfzehnjahrfeier
+Vergiss man besser nicht
+Einen feinen Champagner
+Und tanz schön den Walzer
+
+[Outro]
+Und tanz schön den Walzer`,
+      youtube_link: "https://www.youtube.com/watch?v=eCna-hsmGUY&list=RDeCna-hsmGUY&start_radio=1"
+    }
+  ];
+  
+  populateSongDropdown();
+  if (songsData.length > 0) {
+    loadSongById(songsData[0].id);
+  }
+}
+
+if(modeSelect){ modeSelect.value = wordByWord ? 'yes' : 'no'; }
+if(modeSelect){
+ modeSelect.addEventListener('change', () => {
+  wordByWord = modeSelect.value === 'yes';
+  localStorage.setItem('translate_mode', wordByWord ? 'yes' : 'no');
+ });
+}
+
+
+const bbEs = `[Intro]
+Eh, eh, eh, eh
+
+
+[Verso 1]
+Otro sunset bonito que veo en San Juan
+Disfrutando de todas esas cosas que extrañan los que se van
+Disfrutando de noche' de esas que ya no se dan
+Que ya no se dan
+Pero queriendo volver a la última vez
+Que a los ojos te miré
+Y contarte las cosas que no te conté (Te parece' a mi crush, jaja)
+Y tirarte la' foto' que no te tiré (Acho, jura'o te ves bien linda, déjame tirarte una foto)
+Ey, tengo el pecho pela'o, me dio una matá'
+El corazón dándome patá'
+Dime, baby, ¿dónde tú está'?
+Pa' llegarle con RoRo, Julito, Krystal
+Roy, Edgar, Seba, Óscar, Darnell y Big Jay, tocando batá
+
+
+Hoy la calle la dejamo' 'esbaratá
+Y sería cabrón que tú me toque' el güiro
+
+
+Yo veo tu nombre y me salen suspiro'
+No sé si son petardo' o si son tiro'
+Mi blanquita, perico, mi kilo
+Yo estoy en PR, tranquilo, pero
+
+
+[Estribillo]
+Debí tirar más fotos de cuando te tuve
+Debí darte más beso' y abrazo' las vece' que pude
+Ey, ojalá que los mío' nunca se muden
+Y si hoy me emborracho, pues que me ayuden
+Debí tirar más foto' de cuando te tuve
+Debí darte más beso' y abrazo' las veces que pude
+Ojalá que los mío' nunca se muden
+Y si hoy me emborracho, pues que me ayuden
+
+
+[Verso 2]
+Ey, hoy voy a estar con abuelo to'l día, jugando dominó
+
+
+Si me pregunta si aún pienso en ti, yo le digo que no
+Que mi estadía cerquita de ti ya se terminó
+Ya se terminó, ey
+Que prendan la' máquina', voy pa' Santurce
+Aquí todavía se da caña
+Chequéate las babie', diablo, mami, qué dulce
+Hoy yo quiero beber, beber, beber
+Y hablar mierda hasta que me expulsen
+'Toy bien loco ('Toy bien loco), 'toy bien loco ('Toy bien loco)
+Cabrón, guía tú, que hasta caminando yo estoy que choco
+'Toy bien loco ('Toy bien loco), 'toy bien loco ('Toy bien loco)
+Vamo' a disfrutar, que nunca se sabe si nos queda poco
+Debí tirar más f—
+[Interludio]
+Gente, lo' quiero con cojone', los amo
+Gracias por estar aquí, de verdad
+Para mí e' bien importante que estén aquí
+Cada uno de ustede' significa mucho para mí
+Así que, vamo' pa' la foto, vengan pa'cá
+Métase to'l mundo, to'l corillo, vamo'
+Zumba
+
+
+[Verso 3]
+Ya Bernie tiene el nene y Jan la nena
+
+
+Ya no estamo' pa' la movie' y las cadena'
+'Tamos pa' las cosa' que valgan la pena
+Ey, pa'l perreo, la salsa, la bomba y la plena
+Chequéate la mía cómo es que suena
+
+
+[Outro]
+Debí tirar más fotos de cuando te tuve
+Debí darte más besos y abrazo' las veces que pude
+Ojalá que los mío' nunca se muden
+Y que tú me envíe' más nude'
+Y si hoy me emborracho, que Beno me ayude`;
+
+const bbDe = `[Intro]
+Eh, eh, eh, eh
+
+
+[Strophe 1]
+Noch ein schöner Sonnenuntergang, den ich in San Juan sehe
+Ich genieße all die Dinge, die die Vermissenden vermissen
+Ich genieße Nächte von denen, die es nicht mehr gibt
+Die es nicht mehr gibt
+Aber ich will zurück zu dem letzten Mal
+Als ich dir in die Augen sah
+Und dir die Dinge erzählen, die ich dir nicht erzählte (Du siehst aus wie mein Crush, haha)
+Und dir die Fotos schießen, die ich dir nicht schoss (Ey, du siehst so hübsch aus, lass mich ein Foto machen)
+Ey, meine Brust ist offen, ich hab' mir wehgetan
+Das Herz gibt mir Tritte
+Sag mir, Baby, wo bist du?
+Damit ich mit RoRo, Julito, Krystal ankomme
+Roy, Edgar, Seba, Óscar, Darnell und Big Jay, die Bata trommeln
+
+
+Heute lassen wir die Straße aufgerissen zurück
+Und es wär' genial, wenn du mir am Güiro spielst
+
+
+Ich sehe deinen Namen und Seufzer kommen mir heraus
+Ich weiß nicht, ob es Böller oder Schüsse sind
+Meine Weiße, mein Perico, mein Kilo
+Ich bin in PR, ganz ruhig, aber
+
+
+[Refrain]
+Ich hätte mehr Fotos machen sollen, als ich dich hatte
+Ich hätte dir mehr Küsse und Umarmungen geben sollen, wann immer ich konnte
+Ey, hoffentlich ziehen meine Leute niemals weg
+Und wenn ich mich heute betrinke, dann sollen sie mir helfen
+Ich hätte mehr Fotos machen sollen, als ich dich hatte
+Ich hätte dir mehr Küsse und Umarmungen geben sollen, wann immer ich konnte
+Hoffentlich ziehen meine Leute niemals weg
+Und wenn ich mich heute betrinke, dann sollen sie mir helfen
+
+
+[Strophe 2]
+Ey, heute werde ich den ganzen Tag mit Opa sein und Domino spielen
+
+
+Wenn er mich fragt, ob ich noch an dich denke, sage ich ihm nein
+Dass mein Aufenthalt in deiner Nähe schon vorbei ist
+Schon vorbei, ey
+Sollen sie die Maschinen anwerfen, ich geh' nach Santurce
+Hier gibt es immer noch Zuckerrohr
+Schau dir die Girls an, wow, Baby, wie süß
+Heute will ich trinken, trinken, trinken
+Und Mist reden, bis sie mich rauswerfen
+Ich bin voll durch (Ich bin voll durch), ich bin voll durch (Ich bin voll durch)
+Bruder, fahr du, denn selbst zu Fuß laufe ich gegen alles
+Ich bin voll durch (Ich bin voll durch), ich bin voll durch (Ich bin voll durch)
+Lass uns genießen, man weiß nie, ob uns wenig übrig bleibt
+Ich hätte mehr F—
+
+[Interlude]
+Leute, ich liebe euch wie verrückt, ich liebe euch
+Danke, dass ihr hier seid, wirklich
+Für mich ist es sehr wichtig, dass ihr hier seid
+Jeder von euch bedeutet mir viel
+Also, los zur Foto, kommt her
+Alle rein, die ganze Crew, los
+Zumba
+
+
+[Strophe 3]
+Bernie hat schon den Jungen und Jan das Mädchen
+
+
+Wir sind nicht mehr für die Filme und die Ketten
+Wir sind für die Dinge, die sich lohnen
+Ey, für Perreo, Salsa, Bomba und Plena
+Schau, wie meiner klingt
+
+
+[Outro]
+Ich hätte mehr Fotos machen sollen, als ich dich hatte
+Ich hätte dir mehr Küsse und Umarmungen geben sollen, wann immer ich konnte
+Hoffentlich ziehen meine Leute niemals weg
+Und dass du mir mehr Nudes schickst
+Und wenn ich mich heute betrinke, soll Beno mir helfen`;
+
+const bbEn = `[Intro]
+Eh, eh, eh, eh
+
+
+[Verse 1]
+Another pretty sunset I see in San Juan
+Enjoying all those things the ones who leave miss
+Enjoying the nights, the kind that don’t happen anymore
+That don’t happen anymore
+But wanting to go back to the last time
+When I looked into your eyes
+And tell you the things I didn’t tell you (You look like my crush, haha)
+And take the pictures of you that I didn’t take (Damn, you look so pretty, let me take a photo)
+Hey, my chest is bare, I took a hit
+My heart’s kicking me
+Tell me, baby, where you at?
+So I can pull up with RoRo, Julito, Krystal
+Roy, Edgar, Seba, Óscar, Darnell and Big Jay, playing batá
+
+
+Tonight we’re leaving the street torn up
+And it’d be dope if you play the güiro for me
+
+
+I see your name and sighs come out
+I don’t know if they’re firecrackers or if they’re shots
+My white one, perico, my kilo
+I’m in PR, chilling, but
+
+
+[Chorus]
+I should’ve taken more pictures from when I had you
+I should’ve given you more kisses and hugs whenever I could
+Hey, I hope my people never move away
+And if I get drunk tonight, may they help me
+I should’ve taken more pictures from when I had you
+I should’ve given you more kisses and hugs whenever I could
+I hope my people never move away
+And if I get drunk tonight, may they help me
+
+
+[Verse 2]
+Hey, today I’m gonna be with grandpa all day, playing dominoes
+
+
+If he asks me if I still think of you, I tell him no
+That my stay close to you is already over
+It’s already over, hey
+Fire up the machines, I’m heading to Santurce
+They still press sugarcane here
+Check out the babies, damn, mami, how sweet
+Today I wanna drink, drink, drink
+And talk crap until they expel me
+I’m real gone (I’m real gone), I’m real gone (I’m real gone)
+Bro, you drive, ’cause even walking I’m bumping into things
+I’m real gone (I’m real gone), I’m real gone (I’m real gone)
+Let’s enjoy, you never know if we have little time left
+I should’ve taken more p—
+
+[Interlude]
+Guys, I love you like crazy, I love you
+Thanks for being here, really
+It’s very important to me that you’re here
+Each of you means a lot to me
+So, let’s take the photo, come here
+Everybody get in, the whole crew, let’s go
+Zumba
+
+
+[Verse 3]
+Bernie already has the boy and Jan the girl
+
+
+We’re not about the movies and chains anymore
+We’re about the things that are worth it
+Hey, for perreo, salsa, bomba and plena
+Check out how mine sounds
+
+
+[Outro]
+I should’ve taken more photos from when I had you
+I should’ve given you more kisses and hugs whenever I could
+I hope my people never move away
+And that you send me more nudes
+And if I get drunk tonight, let Beno help me`;
+
+// Canta y No Llores (Tuna Decana)
+const cynlEs = `Ese lunar que tienes, cielito lindo, junto a la boca
+No se lo des a nadie, cielito lindo, que a mí me toca
+De La Sierra Morena, cielito lindo, viene bajando
+Un par de ojitos negros, cielito lindo, de contrabando
+Ay ay ayay canta y no llores
+Porque cantando se alegran, cielito lindo, los corazones
+Ay ay ayay canta y no llores
+Porque cantando se alegran, cielito lindo, los corazones
+De tu puerta a la mía, cielito lindo, no hay mas que un paso
+Ahora que estamos solos, cielito lindo, dame un abrazo
+Pájaro que abandona, cielito lindo, su primer nido
+Sí lo encuentra tu mano, cielito lindo, bien merecido
+Ay ay ayay canta y no llores
+Porque cantando se alegran, cielito lindo los corazones
+Yo a las morenas las quiero desde que supe, desde que supe
+Que por el más la Virgen cielito lindo de Guadalupe
+Ay ay ayay canta y no llores
+Porque cantando se alegran, cielito lindo, los corazones
+Ay ay ayay canta y no llores
+Porque cantando se alegran, cielito lindo, los corazones...`;
+
+const cynlEn = `That beauty mark you have, pretty little sky, next to your mouth
+Don’t give it to anyone, pretty little sky, because it’s meant for me
+From the Sierra Morena, pretty little sky, coming down
+A pair of little black eyes, pretty little sky, smuggled in
+Ay ay ayay, sing and don’t cry
+Because by singing, pretty little sky, hearts are cheered
+Ay ay ayay, sing and don’t cry
+Because by singing, pretty little sky, hearts are cheered
+From your door to mine, pretty little sky, there’s only one step
+Now that we’re alone, pretty little sky, give me a hug
+A bird that abandons, pretty little sky, its first nest
+If your hand finds it, pretty little sky, it’s well deserved
+Ay ay ayay, sing and don’t cry
+Because by singing, pretty little sky, hearts are cheered
+I’ve loved brunettes since I learned, since I learned
+That because of the tilma the Virgin, pretty little sky, of Guadalupe
+Ay ay ayay, sing and don’t cry
+Because by singing, pretty little sky, hearts are cheered
+Ay ay ayay, sing and don’t cry
+Because by singing, pretty little sky, hearts are cheered...`;
+
+const cynlDe = `Dieses Muttermal, das du hast, himmlisches Liebchen, neben dem Mund
+Gib es niemandem, himmlisches Liebchen, denn es gehört mir
+Von der Sierra Morena, himmlisches Liebchen, kommt hinab
+Ein Paar schwarze Augen, himmlisches Liebchen, wie geschmuggelt
+Ai ai ai, sing und weine nicht
+Denn beim Singen freuen sich, himmlisches Liebchen, die Herzen
+Ai ai ai, sing und weine nicht
+Denn beim Singen freuen sich, himmlisches Liebchen, die Herzen
+Von deiner Tür zu meiner, himmlisches Liebchen, ist es nur ein Schritt
+Jetzt, wo wir allein sind, himmlisches Liebchen, gib mir eine Umarmung
+Ein Vogel, der verlässt, himmlisches Liebchen, sein erstes Nest
+Wenn ihn deine Hand findet, himmlisches Liebchen, ist es wohlverdient
+Ai ai ai, sing und weine nicht
+Denn beim Singen freuen sich, himmlisches Liebchen, die Herzen
+Ich liebe die Brünette, seit ich erfuhr, seit ich erfuhr
+Dass wegen des Mantels die Jungfrau, himmlisches Liebchen, von Guadalupe
+Ai ai ai, sing und weine nicht
+Denn beim Singen freuen sich, himmlisches Liebchen, die Herzen
+Ai ai ai, sing und weine nicht
+Denn beim Singen freuen sich, himmlisches Liebchen, die Herzen...`;
+
+// Las Aventuras de Ivan (TONY SOPRANOV BAND)
+const ivanEs = `"Las Aventuras de Ivan"
+
+(Verse 1)
+Iván Cristóbal va a descubrir,
+Todo lo que el mundo tiene pa’ vivir.
+En Berlín con Tony y Tobias,
+Corren juntos entre flores y sonrisas.
+
+(Chorus)
+Oh Iván, Iván, vamos ya,
+El mundo es grande, hay que explorar,
+Con dos gatitos y su risa genial,
+Iván aprende sin parar.
+
+(Verse 2)
+Tony maúlla, Tobias ronronea,
+Iván va cantando mientras todo lo vea.
+Desde los árboles hasta el cielo azul,
+Iván vuela alto con su luz.
+
+(Chorus)
+Oh Iván, Iván, vamos ya,
+El mundo es grande, hay que explorar,
+Con dos gatitos y su risa genial,
+Iván aprende sin parar.
+
+(Bridge)
+Desde Berlín hasta el ancho mar,
+Iván no deja de soñar.
+Con Tony y Tobias siempre a su lado,
+Todo es mágico, todo es dorado.
+
+(Chorus)
+Oh Iván, Iván, vamos ya,
+El mundo es grande, hay que explorar,
+Con dos gatitos y su risa genial,
+Iván aprende sin parar.
+
+(Breakdown)
+Ay, Iván, mueve los pies,
+Con tu ritmo, al mundo ves.
+"Ey, ey, pa’lante, no pares, Iván,
+Tú conquistas el mundo, eres el más grande fan."
+
+(Chorus)
+Oh Iván, Iván, vamos ya,
+El mundo es grande, hay que explorar,
+Con dos gatitos y su risa genial,
+Iván aprende sin parar.`;
+
+const ivanEn = `"The Adventures of Iván"
+
+(Verse 1)
+Iván Cristóbal is going to discover
+Everything the world has for living.
+In Berlin with Tony and Tobias,
+They run together among flowers and smiles.
+
+(Chorus)
+Oh Iván, Iván, let’s go now,
+The world is big, we must explore,
+With two little kittens and his great laugh,
+Iván keeps on learning without stop.
+
+(Verse 2)
+Tony meows, Tobias purrs,
+Iván goes on singing as he sees it all.
+From the trees up to the blue sky,
+Iván flies high with his light.
+
+(Chorus)
+Oh Iván, Iván, let’s go now,
+The world is big, we must explore,
+With two little kittens and his great laugh,
+Iván keeps on learning without stop.
+
+(Bridge)
+From Berlin out to the wide sea,
+Iván never stops dreaming.
+With Tony and Tobias always at his side,
+Everything is magic, everything is golden.
+
+(Chorus)
+Oh Iván, Iván, let’s go now,
+The world is big, we must explore,
+With two little kittens and his great laugh,
+Iván keeps on learning without stop.
+
+(Breakdown)
+Oh, Iván, move your feet,
+With your rhythm, you see the world.
+"Hey, hey, forward, don’t stop, Iván,
+You’ll conquer the world, you’re the biggest fan."
+
+(Chorus)
+Oh Iván, Iván, let’s go now,
+The world is big, we must explore,
+With two little kittens and his great laugh,
+Iván keeps on learning without stop.`;
+
+const ivanDe = `"Die Abenteuer von Iván"
+
+(Strophe 1)
+Iván Cristóbal wird entdecken,
+Alles, was die Welt zum Leben bereithält.
+In Berlin mit Tony und Tobias
+rennen sie zusammen durch Blumen und Lächeln.
+
+(Refrain)
+Oh Iván, Iván, komm, wir gehen,
+Die Welt ist groß, man muss sie erkunden,
+Mit zwei Kätzchen und seinem tollen Lachen
+lernt Iván ohne Unterlass.
+
+(Strophe 2)
+Tony miaut, Tobias schnurrt,
+Iván singt weiter, während er alles sieht.
+Von den Bäumen bis hinauf zum blauen Himmel
+fliegt Iván hoch mit seinem Licht.
+
+(Refrain)
+Oh Iván, Iván, komm, wir gehen,
+Die Welt ist groß, man muss sie erkunden,
+Mit zwei Kätzchen und seinem tollen Lachen
+lernt Iván ohne Unterlass.
+
+(Bridge)
+Von Berlin bis hin zum weiten Meer
+hört Iván nicht auf zu träumen.
+Mit Tony und Tobias stets an seiner Seite
+ist alles magisch, alles golden.
+
+(Refrain)
+Oh Iván, Iván, komm, wir gehen,
+Die Welt ist groß, man muss sie erkunden,
+Mit zwei Kätzchen und seinem tollen Lachen
+lernt Iván ohne Unterlass.
+
+(Breakdown)
+Ay, Iván, beweg die Füße,
+Mit deinem Rhythmus siehst du die Welt.
+"Ey, ey, vorwärts, bleib nicht stehen, Iván,
+Du eroberst die Welt, du bist der größte Fan."
+
+(Refrain)
+Oh Iván, Iván, komm, wir gehen,
+Die Welt ist groß, man muss sie erkunden,
+Mit zwei Kätzchen und seinem tollen Lachen
+lernt Iván ohne Unterlass.`;
+
+function loadSong(key){
+ if(key === 'shakira'){
+  setPlainText(areas[0], shakiraEs);
+  setPlainText(areas[1], shakiraDe);
+  setPlainText(areas[2], shakiraEn);
+  artistEl.textContent = 'Shakira';
+  songTitleEl.textContent = 'Pies Descalzos, Sueños Blancos';
+  artistEl.dataset.wiki = 'Shakira';
+  if(listenLink){ listenLink.href = 'https://www.youtube.com/watch?v=eCna-hsmGUY&list=RDeCna-hsmGUY&start_radio=1'; listenLink.textContent = songTitleEl.textContent; }
+ } else if(key === 'bb-dtmf'){
+  setPlainText(areas[0], bbEs);
+  setPlainText(areas[1], bbDe);
+  setPlainText(areas[2], bbEn);
+  artistEl.textContent = 'Bad Bunny';
+  songTitleEl.textContent = 'DtMF';
+  artistEl.dataset.wiki = 'Bad_Bunny';
+  if(listenLink){ listenLink.href = 'https://www.youtube.com/watch?v=4X4uckVyk9o&list=RD4X4uckVyk9o'; listenLink.textContent = songTitleEl.textContent; }
+ } else if(key === 'cynl'){
+  setPlainText(areas[0], cynlEs);
+  setPlainText(areas[1], cynlDe);
+  setPlainText(areas[2], cynlEn);
+  artistEl.textContent = 'Tuna Decana de Madrid';
+  songTitleEl.textContent = 'Canta y No Llores';
+  artistEl.dataset.wiki = 'Cielito_Lindo';
+  if(listenLink){ listenLink.href = 'https://www.youtube.com/watch?v=y1YqflmkOk4&list=RDy1YqflmkOk4&start_radio=1'; listenLink.textContent = songTitleEl.textContent; }
+ } else if(key === 'ivan'){
+  setPlainText(areas[0], ivanEs);
+  setPlainText(areas[1], ivanDe);
+  setPlainText(areas[2], ivanEn);
+  artistEl.textContent = 'TONY SOPRANOV BAND';
+  songTitleEl.textContent = 'Las Aventuras de Ivan';
+  artistEl.dataset.wiki = 'TONY_SOPRANOV_BAND';
+  if(listenLink){ listenLink.href = 'https://www.youtube.com/watch?v=ZWmPFsnDYNw&list=OLAK5uy_nBv4HcpLO1lyT_dAT22jABKpwQSbBH0Yo'; listenLink.textContent = songTitleEl.textContent; }
+ }
+ lockLineCounts();
+ updateHighlightsFromSelection();
+}
+
+select.addEventListener('change', (e) => {
+ const songId = e.target.value;
+ loadSongById(songId);
+ localStorage.setItem('songSelection', songId);
+ // Also persist current texts after switch
+ localStorage.setItem('text_es', getText(areas[0]));
+ localStorage.setItem('text_de', getText(areas[1]));
+ localStorage.setItem('text_en', getText(areas[2]));
+});
+
+// Ensure initial values cached as raw
+areas.forEach(a => ensureRaw(a));
+
+// Tooltip: Wikipedia preview
+async function fetchWikiExtract(title){
+ try{
+  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('fetch failed');
+  const data = await res.json();
+  return {title: data.title, extract: data.extract};
+ }catch(e){
+  return {title, extract: 'No preview available.'};
+ }
+}
+
+function positionTooltip(target){
+ const rect = target.getBoundingClientRect();
+ const top = window.scrollY + rect.top + rect.height + 6;
+ const left = window.scrollX + rect.left;
+ tooltipEl.style.top = top + 'px';
+ tooltipEl.style.left = left + 'px';
+}
+
+async function showTooltip(target){
+ tooltipEl.style.display = 'block';
+ tooltipEl.setAttribute('aria-hidden', 'false');
+ positionTooltip(target);
+ const title = target.dataset.wiki || target.textContent.trim();
+ const {title: t, extract} = await fetchWikiExtract(title);
+ tooltipEl.innerHTML = `<h4>${t}</h4><p>${extract}</p>`;
+ positionTooltip(target);
+}
+
+function hideTooltip(){
+ tooltipEl.style.display = 'none';
+ tooltipEl.setAttribute('aria-hidden', 'true');
+}
+
+artistEl.addEventListener('mouseenter', () => showTooltip(artistEl));
+artistEl.addEventListener('focus', () => showTooltip(artistEl));
+artistEl.addEventListener('mouseleave', hideTooltip);
+artistEl.addEventListener('blur', hideTooltip);
+
+// Grammar tooltip for Spanish selections (verbs only)
+function generateSpanishGrammarExplanation(text){
+ const t = text.trim();
+ if(!t) return '';
+ // Verb detection heuristics
+ // Common auxiliaries and high-frequency verbs
+ if(/\b(ser|soy|eres|es|somos|sois|son|fui|fue|fueron|era|eran)\b/i.test(t)){
+  return 'Verb: "ser" (to be). Used for identity, characteristics, origin, time. Preterite (fui/fue) vs imperfect (era) changes aspect.';
+ }
+ if(/\b(estar|estoy|estás|está|estamos|estáis|están|estuve|estaba|estaban)\b/i.test(t)){
+  return 'Verb: "estar" (to be). Used for states/locations. Preterite (estuve) = completed state; imperfect (estaba) = ongoing/background.';
+ }
+ if(/\b(haber|he|has|ha|hemos|han|había|hubo|habrá|habría|haya|hubiera)\b/i.test(t)){
+  return 'Auxiliary verb: "haber" forms perfect tenses (he cantado) and impersonal expressions (hay). Watch tense/aspect.';
+ }
+ if(/\b(ir|voy|vas|va|vamos|vais|van|fui|iba|iré|iría)\b/i.test(t)){
+  return 'Verb: "ir" (to go). "Ir a + infinitive" expresses near future (voy a cantar). Preterite vs imperfect marks completed vs habitual movement.';
+ }
+ if(/\b(tener|tengo|tienes|tiene|tenemos|tienen|tuve|tenía)\b/i.test(t)){
+  return 'Verb: "tener" (to have). Idioms: tener que + inf (obligation), tener frío/sueño/hambre (states). Preterite vs imperfect nuance.';
+ }
+ if(/\b(querer|quiero|quieres|quiere|queremos|quieren|quise|quería)\b/i.test(t)){
+  return 'Verb: "querer" (to want/love). In the preterite often implies attempted/managed (quise = tried). Imperfect (quería) = ongoing desire.';
+ }
+ if(/\b(poder|puedo|puedes|puede|podemos|pueden|pude|podía)\b/i.test(t)){
+  return 'Verb: "poder" (to be able/can). Preterite (pude) = managed to; imperfect (podía) = was able to (ongoing ability).';
+ }
+ if(/\b(hacer|hago|haces|hace|hacemos|hacen|hice|hacía)\b/i.test(t)){
+  return 'Verb: "hacer" (to do/make). Frequent in set phrases; preterite (hice) vs imperfect (hacía) indicates completed vs ongoing.';
+ }
+ if(/\b(decir|digo|dices|dice|decimos|dicen|dije|decía)\b/i.test(t)){
+  return 'Verb: "decir" (to say/tell). Often introduces reported speech; note irregular preterite (dije).';
+ }
+ if(/\b(venir|vengo|vienes|viene|venimos|vienen|vine|venía)\b/i.test(t)){
+  return 'Verb: "venir" (to come). Irregular preterite (vine).';
+ }
+ if(/\b(dar|doy|das|da|damos|dan|di|daba)\b/i.test(t)){
+  return 'Verb: "dar" (to give). Irregular preterite (di).';
+ }
+ if(/\b(ver|veo|ves|ve|vemos|ven|vi|veía)\b/i.test(t)){
+  return 'Verb: "ver" (to see). Imperfect (veía) often for background descriptions.';
+ }
+ // Generic detection by infinitives and common conjugation endings
+ if(/\b[a-záéíóúñ]+(ar|er|ir)\b/i.test(t)){
+  return 'Infinitive detected (-ar/-er/-ir). Infinitives follow modal verbs (quiero cantar) and prepositions (para cantar).';
+ }
+ if(/\b[a-záéíóúñ]+(é|aste|ó|amos|asteis|aron|í|iste|ió|imos|isteis|ieron)\b/i.test(t)){
+  return 'Preterite conjugation detected (completed past). Compare with imperfect for background/ongoing past.';
+ }
+ if(/\b[a-záéíóúñ]+(aba|abas|aba|ábamos|abais|aban|ía|ías|ía|íamos|íais|ían)\b/i.test(t)){
+  return 'Imperfect conjugation detected (ongoing/habitual past).';
+ }
+ if(/\b(haya|hayas|haya|hayamos|hayáis|hayan|hubiera|hubiese|fuera|fuese|diga|dijera|quiera|pueda)\b/i.test(t)){
+  return 'Subjunctive forms detected. Subjunctive expresses doubt, desire, emotion, or non-real situations.';
+ }
+ // No verb found
+ return '';
+}
+
+function showGrammarTooltipLeft(anchorRect, content){
+ tooltipEl.classList.add('tooltip--left');
+ tooltipEl.innerHTML = `<h4>Spanish Grammar</h4><p>${content}</p>`;
+ tooltipEl.style.display = 'block';
+ tooltipEl.setAttribute('aria-hidden','false');
+ const top = window.scrollY + anchorRect.top;
+ const left = window.scrollX + anchorRect.left - 12; // start near left edge
+ tooltipEl.style.top = (top) + 'px';
+ tooltipEl.style.left = (left) + 'px';
+}
+
+function hideGrammarTooltip(){
+ tooltipEl.classList.remove('tooltip--left');
+ hideTooltip();
+}
+
+function updateGrammarTooltipFromSpanishSelection(){
+ const sel = window.getSelection();
+ if(!sel || sel.isCollapsed || !spanishArea.contains(sel.anchorNode)){
+  hideGrammarTooltip();
+  hideTranslationTooltips();
+  return;
+ }
+ const text = sel.toString();
+ const explanation = generateSpanishGrammarExplanation(text);
+ if(!explanation){
+  hideGrammarTooltip();
+  // still show translations if any selection
+  showTranslationTooltipsFromSelection();
+  return;
+ }
+ const range = sel.getRangeAt(0);
+ const rects = range.getClientRects();
+ if(!rects || rects.length === 0){
+  hideGrammarTooltip();
+  hideTranslationTooltips();
+  return;
+ }
+ const firstRect = rects[0];
+ showGrammarTooltipLeft(firstRect, explanation);
+  showTranslationTooltipsFromSelection();
+}
+
+function hideTranslationTooltips(){
+ tooltipEn.style.display = 'none';
+ tooltipEn.setAttribute('aria-hidden','true');
+ tooltipDe.style.display = 'none';
+ tooltipDe.setAttribute('aria-hidden','true');
+}
+
+function equalizeTooltipWidths(){
+ const widths = [];
+ if(tooltipEn.style.display !== 'none'){ widths.push(tooltipEn.scrollWidth); }
+ if(tooltipDe.style.display !== 'none'){ widths.push(tooltipDe.scrollWidth); }
+ if(tooltipEl.style.display !== 'none'){ widths.push(tooltipEl.scrollWidth); }
+ if(widths.length === 0) return;
+ const maxW = Math.max(...widths);
+ tooltipEn.style.width = maxW + 'px';
+ tooltipDe.style.width = maxW + 'px';
+ tooltipEl.style.width = maxW + 'px';
+}
+
+function positionTranslationTooltips(rect){
+ const baseTop = window.scrollY + rect.top;
+ const baseLeft = window.scrollX + rect.right + 12;
+ // EN to the right, DE next to EN
+ if(window.matchMedia && window.matchMedia('(max-width: 600px)').matches){
+  // Stack at bottom on mobile with 10px gap
+  const enHeight = tooltipEn.offsetHeight || 0;
+  const deHeight = tooltipDe.offsetHeight || 0;
+  tooltipEn.style.position = 'fixed';
+  tooltipDe.style.position = 'fixed';
+  tooltipDe.style.bottom = '12px';
+  tooltipEn.style.bottom = (12 + deHeight + 50) + 'px';
+  tooltipEn.style.left = '12px';
+  tooltipEn.style.right = '12px';
+  tooltipDe.style.left = '12px';
+  tooltipDe.style.right = '12px';
+ } else {
+  tooltipEn.style.top = baseTop + 'px';
+  tooltipEn.style.left = baseLeft + 'px';
+  tooltipEn.style.right = 'auto';
+  tooltipDe.style.top = (baseTop + (tooltipEn.offsetHeight || 0) + 50) + 'px';
+  tooltipDe.style.left = baseLeft + 'px';
+  tooltipDe.style.right = 'auto';
+ }
+}
+
+function showTranslationTooltipsFromSelection(){
+ const sel = window.getSelection();
+ if(!sel || sel.isCollapsed || !spanishArea.contains(sel.anchorNode)){
+  hideTranslationTooltips();
+  return;
+ }
+ const range = sel.getRangeAt(0);
+ const rects = range.getClientRects();
+ if(!rects || rects.length === 0){
+  hideTranslationTooltips();
+  return;
+ }
+ const idx = getSelectionLineIndexIn(spanishArea);
+ if(idx < 0){ hideTranslationTooltips(); return; }
+ // Pull EN/DE raw text
+ const en = document.getElementById('ta-en');
+ const de = document.getElementById('ta-de');
+ if(!en || !de){ hideTranslationTooltips(); return; }
+ ensureRaw(en); ensureRaw(de);
+ const enLines = (en.dataset.raw || getText(en)).split(/\r?\n/);
+ const deLines = (de.dataset.raw || getText(de)).split(/\r?\n/);
+ const safeIdxEn = Math.max(0, Math.min(idx, enLines.length - 1));
+ const safeIdxDe = Math.max(0, Math.min(idx, deLines.length - 1));
+ const enText = enLines[safeIdxEn] || '';
+ const deText = deLines[safeIdxDe] || '';
+ if(!enText.trim() && !deText.trim()){
+  hideTranslationTooltips();
+  return;
+ }
+ tooltipEn.innerHTML = `<h4>English</h4><p>${enText.replace(/</g,'&lt;')}</p>`;
+ tooltipDe.innerHTML = `<h4>Deutsch</h4><p>${deText.replace(/</g,'&lt;')}</p>`;
+ tooltipEn.style.display = enText.trim() ? 'block' : 'none';
+ tooltipEn.setAttribute('aria-hidden', enText.trim() ? 'false' : 'true');
+ tooltipDe.style.display = deText.trim() ? 'block' : 'none';
+ tooltipDe.setAttribute('aria-hidden', deText.trim() ? 'false' : 'true');
+ equalizeTooltipWidths();
+ positionTranslationTooltips(rects[0]);
+}
+
+// Per-word translation using MyMemory API with caching
+const wordCache = {
+ get(key){ try{return JSON.parse(localStorage.getItem(key) || 'null');}catch(e){return null;} },
+ set(key, val){ try{localStorage.setItem(key, JSON.stringify(val));}catch(e){} }
+};
+
+async function fetchMyMemory(word, target){
+ const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=es|${encodeURIComponent(target)}`;
+ try{
+  const res = await fetch(url, {headers:{'Accept':'application/json'}});
+  if(!res.ok) throw new Error('bad status');
+  const data = await res.json();
+  const translated = (data && data.responseData && data.responseData.translatedText) ? data.responseData.translatedText : '';
+  return translated;
+ }catch(e){
+  return '';
+ }
+}
+
+async function translateWord(word, target){
+ const key = `dict_es_${target}_${word.toLowerCase()}`;
+ const cached = wordCache.get(key);
+ if(cached) return cached;
+ const result = await fetchMyMemory(word, target);
+ const cleaned = (result || '').split(/[,;()\[\]\-]/)[0].trim();
+ const finalVal = cleaned || '';
+ wordCache.set(key, finalVal);
+ return finalVal;
+}
+
+function tokenizeSpanish(sentence){
+ return sentence.split(/(\b[^\s\W]+\b)/u).filter(t => t.trim().length > 0);
+}
+
+async function buildPerWordSections(sentence){
+ const tokens = tokenizeSpanish(sentence);
+ const words = tokens.filter(t => /\p{L}+/u.test(t));
+ const unique = Array.from(new Set(words.map(w => w.toLowerCase())));
+ // translate in parallel
+ const enPromises = unique.map(w => translateWord(w, 'en'));
+ const dePromises = unique.map(w => translateWord(w, 'de'));
+ const enResults = await Promise.all(enPromises);
+ const deResults = await Promise.all(dePromises);
+ const wordToEn = Object.fromEntries(unique.map((w,i)=>[w, enResults[i] || '']));
+ const wordToDe = Object.fromEntries(unique.map((w,i)=>[w, deResults[i] || '']));
+ // build HTML lists preserving order (including punctuation tokens)
+ const enChips = tokens.map(tok => {
+  const key = tok.toLowerCase();
+  if(/\p{L}+/u.test(tok)){
+   const tr = wordToEn[key] || '';
+   return `<span class="word-chip"><b>${tok.replace(/</g,'&lt;')}</b>${tr?` — ${tr.replace(/</g,'&lt;')}`:''}</span>`;
+  }
+  return `<span class="word-chip">${tok.replace(/</g,'&lt;')}</span>`;
+ }).join('');
+ const deChips = tokens.map(tok => {
+  const key = tok.toLowerCase();
+  if(/\p{L}+/u.test(tok)){
+   const tr = wordToDe[key] || '';
+   return `<span class="word-chip"><b>${tok.replace(/</g,'&lt;')}</b>${tr?` — ${tr.replace(/</g,'&lt;')}`:''}</span>`;
+  }
+  return `<span class="word-chip">${tok.replace(/</g,'&lt;')}</span>`;
+ }).join('');
+ return {enHtml: `<div class="word-list">${enChips}</div>`, deHtml: `<div class="word-list">${deChips}</div>`};
+}
+
+// Tap-to-translate: clicking a line auto-selects that sentence/line
+function getSpanishLines(){
+ ensureRaw(spanishArea);
+ const raw = spanishArea.dataset.raw || getText(spanishArea);
+ return raw.split(/\r?\n/);
+}
+
+function getLineTextEs(index){
+ const lines = getSpanishLines();
+ const idx = Math.max(0, Math.min(index, lines.length - 1));
+ return lines[idx] || '';
+}
+
+function getCaretOffsetFromPoint(container, x, y){
+ const doc = container.ownerDocument;
+ let range = null;
+ if(doc.caretRangeFromPoint){
+  range = doc.caretRangeFromPoint(x, y);
+ } else if(doc.caretPositionFromPoint){
+  const pos = doc.caretPositionFromPoint(x, y);
+  if(pos){
+   range = doc.createRange();
+   range.setStart(pos.offsetNode, pos.offset);
+   range.collapse(true);
+  }
+ }
+ if(!range){
+  const sel = window.getSelection();
+  if(!sel || sel.rangeCount === 0) return 0;
+  range = sel.getRangeAt(0);
+ }
+ const pre = doc.createRange();
+ pre.selectNodeContents(container);
+ pre.setEnd(range.startContainer, range.startOffset);
+ return pre.toString().length;
+}
+
+function findSentenceBounds(text, anchorOffset){
+ const len = text.length;
+ const isBoundary = (ch) => /[\.\?!¡¿…\n]/.test(ch);
+ let start = 0;
+ for(let i = anchorOffset - 1; i >= 0; i--){
+  if(isBoundary(text[i])){ start = i + 1; break; }
+ }
+ let end = len;
+ for(let j = anchorOffset; j < len; j++){
+  if(isBoundary(text[j])){ end = j + 1; break; }
+ }
+ // Trim whitespace at edges
+ while(start < end && /\s/.test(text[start])) start++;
+ while(end > start && /\s/.test(text[end-1])) end--;
+ return {start, end};
+}
+
+function getClickedSentenceInfo(e){
+ ensureRaw(spanishArea);
+ const raw = spanishArea.dataset.raw || getText(spanishArea);
+ const offset = getCaretOffsetFromPoint(spanishArea, e.clientX, e.clientY);
+ const {start, end} = findSentenceBounds(raw, offset);
+ const sentence = raw.slice(start, end);
+ // Map to line indices
+ const preText = raw.slice(0, start);
+ const startLine = preText.split(/\r?\n/).length - 1;
+ const spanText = raw.slice(start, end);
+ const lineSpan = spanText.split(/\r?\n/).length - 1;
+ const endLine = startLine + Math.max(0, lineSpan);
+ return {sentence, startLine, endLine};
+}
+
+async function showTranslationTooltipsForIndex(index){
+ const en = document.getElementById('ta-en');
+ const de = document.getElementById('ta-de');
+ if(!en || !de){ hideTranslationTooltips(); return; }
+ ensureRaw(en); ensureRaw(de);
+ const enLines = (en.dataset.raw || getText(en)).split(/\r?\n/);
+ const deLines = (de.dataset.raw || getText(de)).split(/\r?\n/);
+ const safeIdxEn = Math.max(0, Math.min(index, enLines.length - 1));
+ const safeIdxDe = Math.max(0, Math.min(index, deLines.length - 1));
+ const enText = enLines[safeIdxEn] || '';
+ const deText = deLines[safeIdxDe] || '';
+ if(!enText.trim() && !deText.trim()){
+  hideTranslationTooltips();
+  return;
+ }
+ if(wordByWord){
+  // Build per-word first, then reveal tooltips to avoid flicker
+  tooltipEn.style.display = 'none';
+  tooltipDe.style.display = 'none';
+  const sentence = getLineTextEs(index);
+  const {enHtml, deHtml} = await buildPerWordSections(sentence);
+  tooltipEn.innerHTML = `<h4>English</h4><p>${enText.replace(/</g,'&lt;')}</p>` + (enHtml || '');
+  tooltipDe.innerHTML = `<h4>Deutsch</h4><p>${deText.replace(/</g,'&lt;')}</p>` + (deHtml || '');
+  tooltipEn.style.display = enText.trim() ? 'block' : 'none';
+  tooltipEn.setAttribute('aria-hidden', enText.trim() ? 'false' : 'true');
+  tooltipDe.style.display = deText.trim() ? 'block' : 'none';
+  tooltipDe.setAttribute('aria-hidden', deText.trim() ? 'false' : 'true');
+  equalizeTooltipWidths();
+ } else {
+  tooltipEn.innerHTML = `<h4>English</h4><p>${enText.replace(/</g,'&lt;')}</p>`;
+  tooltipDe.innerHTML = `<h4>Deutsch</h4><p>${deText.replace(/</g,'&lt;')}</p>`;
+  tooltipEn.style.display = enText.trim() ? 'block' : 'none';
+  tooltipEn.setAttribute('aria-hidden', enText.trim() ? 'false' : 'true');
+  tooltipDe.style.display = deText.trim() ? 'block' : 'none';
+  tooltipDe.setAttribute('aria-hidden', deText.trim() ? 'false' : 'true');
+  equalizeTooltipWidths();
+ }
+ // Build a synthetic rect aligned to the clicked line
+ const rect = spanishArea.getBoundingClientRect();
+ const lh = getLineHeightPx(spanishArea) || 24;
+ const synthetic = { top: rect.top + index * lh, right: rect.right };
+ positionTranslationTooltips(synthetic);
+}
+
+function highlightLines(el, startLine, endLine){
+ ensureRaw(el);
+ const raw = el.dataset.raw || getText(el);
+ const lines = raw.split(/\r?\n/);
+ const a = Math.max(0, Math.min(startLine, lines.length - 1));
+ const b = Math.max(a, Math.min(endLine, lines.length - 1));
+ const html = lines.map((ln, i) => (i>=a && i<=b) ? '<mark class="hl">'+ln.replace(/</g,'&lt;')+'</mark>' : ln.replace(/</g,'&lt;')).join('<br>');
+ el.innerHTML = html;
+}
+
+spanishArea.addEventListener('click', (e) => {
+ const info = getClickedSentenceInfo(e);
+ // Visual feedback: highlight the entire sentence across lines
+ highlightLines(spanishArea, info.startLine, info.endLine);
+ // Show grammar tooltip if a verb exists in the sentence
+ const explanation = generateSpanishGrammarExplanation(info.sentence);
+ const rect = spanishArea.getBoundingClientRect();
+ const lh = getLineHeightPx(spanishArea) || 24;
+ const synthetic = { top: rect.top + info.startLine * lh, right: rect.right };
+ if(explanation){
+  showGrammarTooltipLeft(synthetic, explanation);
+ } else {
+  hideGrammarTooltip();
+ }
+ // Show translations for the first line of the sentence
+ showTranslationTooltipsForIndex(info.startLine);
+});
+
+// Hook into existing selection update flow
+areas[0].addEventListener('mouseup', updateGrammarTooltipFromSpanishSelection);
+areas[0].addEventListener('keyup', () => updateGrammarTooltipFromSpanishSelection());
+document.addEventListener('selectionchange', () => updateGrammarTooltipFromSpanishSelection());
+document.addEventListener('click', (e) => {
+ if(!tooltipEl.contains(e.target) && !spanishArea.contains(e.target)){
+  hideGrammarTooltip();
+ }
+ if(!tooltipEn.contains(e.target) && !tooltipDe.contains(e.target) && !spanishArea.contains(e.target)){
+  hideTranslationTooltips();
+ }
+});
+</script>
+</main>
+</body>
+</html>

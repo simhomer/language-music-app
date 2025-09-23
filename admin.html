@@ -1,0 +1,526 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Song Database Admin</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: "American Typewriter", serif;
+            line-height: 1.6;
+            color: #333;
+            background: #b8b8b8;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #2c3e50;
+        }
+        
+        .admin-panel {
+            background: #d1d1d1;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            font-family: "American Typewriter", serif;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        
+        textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+        
+        .btn {
+            background: #3498db;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        
+        .btn:hover {
+            background: #2980b9;
+        }
+        
+        .btn-danger {
+            background: #e74c3c;
+        }
+        
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+        
+        .btn-success {
+            background: #27ae60;
+        }
+        
+        .btn-success:hover {
+            background: #229954;
+        }
+        
+        .songs-list {
+            background: #d1d1d1;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .song-item {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: #fafafa;
+        }
+        
+        .song-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .song-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .song-artist {
+            color: #7f8c8d;
+            font-size: 16px;
+        }
+        
+        .song-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .song-lyrics {
+            background: white;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: "American Typewriter", serif;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+        
+        .song-link {
+            color: #3498db;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .song-link:hover {
+            text-decoration: underline;
+        }
+        
+        .search-box {
+            margin-bottom: 20px;
+        }
+        
+        .search-box input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: 600;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #7f8c8d;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .admin-panel, .songs-list {
+                padding: 20px;
+            }
+            
+            .song-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .song-actions {
+                width: 100%;
+                justify-content: space-between;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Song Database Admin</h1>
+        
+        <div class="admin-panel">
+            <h2>Add New Song</h2>
+            <form id="addSongForm">
+                <div class="form-group">
+                    <label for="songName">Song Name:</label>
+                    <input type="text" id="songName" name="songName" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="artistName">Artist Name:</label>
+                    <input type="text" id="artistName" name="artistName" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="lyricsSpanish">Spanish Lyrics:</label>
+                    <textarea id="lyricsSpanish" name="lyricsSpanish" required placeholder="Paste the Spanish lyrics here..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="lyricsEnglish">English Lyrics (Optional):</label>
+                    <textarea id="lyricsEnglish" name="lyricsEnglish" placeholder="Paste the English translation here..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="lyricsGerman">German Lyrics (Optional):</label>
+                    <textarea id="lyricsGerman" name="lyricsGerman" placeholder="Paste the German translation here..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="youtubeLink">YouTube Link:</label>
+                    <input type="url" id="youtubeLink" name="youtubeLink" required placeholder="https://www.youtube.com/watch?v=...">
+                </div>
+                
+                <button type="submit" class="btn btn-success">Add Song</button>
+            </form>
+        </div>
+        
+        <div class="songs-list">
+            <h2>Manage Songs</h2>
+            
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search songs by name or artist...">
+            </div>
+            
+            <div id="status"></div>
+            <div id="songsContainer">
+                <div class="loading">Loading songs...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Resolve API base for both http(s) serving and file:// opening
+        // Allow overriding backend via ?backend=... or stored value, else same-origin or localhost for file://
+        function resolveBackendOrigin(){
+            const params = new URLSearchParams(location.search);
+            const fromQuery = params.get('backend');
+            if(fromQuery){
+                try{ localStorage.setItem('backend_origin', fromQuery); }catch(e){}
+                return fromQuery.replace(/\/$/, '');
+            }
+            try{
+                const stored = localStorage.getItem('backend_origin');
+                if(stored) return stored.replace(/\/$/, '');
+            }catch(e){}
+            if(location.protocol === 'file:') return 'http://localhost:3000';
+            return '';
+        }
+        const API_ORIGIN = resolveBackendOrigin();
+        const API_BASE = `${API_ORIGIN}/api/songs`;
+        let allSongs = [];
+        
+        // Utility functions
+        function showStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+            setTimeout(() => {
+                statusDiv.innerHTML = '';
+            }, 5000);
+        }
+        
+        function formatDate(dateString) {
+            return new Date(dateString).toLocaleDateString();
+        }
+        
+        // API functions
+        async function fetchSongs() {
+            try {
+                const response = await fetch(API_BASE);
+                if (!response.ok) throw new Error('Failed to fetch songs');
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching songs:', error);
+                throw error;
+            }
+        }
+        
+        async function addSong(songData) {
+            try {
+                const response = await fetch(API_BASE, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(songData)
+                });
+                
+                if (!response.ok) throw new Error('Failed to add song');
+                return await response.json();
+            } catch (error) {
+                console.error('Error adding song:', error);
+                throw error;
+            }
+        }
+        
+        async function updateSong(id, songData) {
+            try {
+                const response = await fetch(`${API_BASE}/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(songData)
+                });
+                
+                if (!response.ok) throw new Error('Failed to update song');
+                return await response.json();
+            } catch (error) {
+                console.error('Error updating song:', error);
+                throw error;
+            }
+        }
+        
+        async function deleteSong(id) {
+            try {
+                const response = await fetch(`${API_BASE}/${id}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) throw new Error('Failed to delete song');
+                return await response.json();
+            } catch (error) {
+                console.error('Error deleting song:', error);
+                throw error;
+            }
+        }
+        
+        async function searchSongs(query) {
+            try {
+                const response = await fetch(`${API_BASE}/search/${encodeURIComponent(query)}`);
+                if (!response.ok) throw new Error('Failed to search songs');
+                return await response.json();
+            } catch (error) {
+                console.error('Error searching songs:', error);
+                throw error;
+            }
+        }
+        
+        // UI functions
+        function renderSongs(songs) {
+            const container = document.getElementById('songsContainer');
+            
+            if (songs.length === 0) {
+                container.innerHTML = '<div class="loading">No songs found</div>';
+                return;
+            }
+            
+            container.innerHTML = songs.map(song => `
+                <div class="song-item" data-id="${song.id}">
+                    <div class="song-header">
+                        <div>
+                            <div class="song-title">${song.song_name}</div>
+                            <div class="song-artist">by ${song.artist_name}</div>
+                        </div>
+                        <div class="song-actions">
+                            <button class="btn" onclick="editSong(${song.id})">Edit</button>
+                            <button class="btn btn-danger" onclick="deleteSongConfirm(${song.id})">Delete</button>
+                        </div>
+                    </div>
+                    <div class="song-lyrics">${song.lyrics_spanish.substring(0, 200)}${song.lyrics_spanish.length > 200 ? '...' : ''}</div>
+                    <div>
+                        <a href="${song.youtube_link}" target="_blank" class="song-link">Watch on YouTube</a>
+                        <span style="color: #7f8c8d; margin-left: 10px;">Added: ${formatDate(song.created_at)}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function editSong(id) {
+            const song = allSongs.find(s => s.id === id);
+            if (!song) return;
+            
+            // Populate form with song data
+            document.getElementById('songName').value = song.song_name;
+            document.getElementById('artistName').value = song.artist_name;
+            document.getElementById('lyricsSpanish').value = song.lyrics_spanish;
+            document.getElementById('lyricsEnglish').value = song.lyrics_english || '';
+            document.getElementById('lyricsGerman').value = song.lyrics_german || '';
+            document.getElementById('youtubeLink').value = song.youtube_link;
+            
+            // Change form to update mode
+            const form = document.getElementById('addSongForm');
+            const submitBtn = form.querySelector('button[type="submit"]');
+            
+            form.dataset.editId = id;
+            submitBtn.textContent = 'Update Song';
+            submitBtn.className = 'btn btn-success';
+            
+            // Scroll to form
+            form.scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        function deleteSongConfirm(id) {
+            if (confirm('Are you sure you want to delete this song? This action cannot be undone.')) {
+                deleteSongAndRefresh(id);
+            }
+        }
+        
+        async function deleteSongAndRefresh(id) {
+            try {
+                await deleteSong(id);
+                showStatus('Song deleted successfully');
+                loadSongs();
+            } catch (error) {
+                showStatus('Failed to delete song', 'error');
+            }
+        }
+        
+        async function loadSongs() {
+            try {
+                allSongs = await fetchSongs();
+                renderSongs(allSongs);
+            } catch (error) {
+                showStatus('Failed to load songs', 'error');
+                document.getElementById('songsContainer').innerHTML = '<div class="loading">Error loading songs</div>';
+            }
+        }
+        
+        // Event listeners
+        document.getElementById('addSongForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const songData = {
+                song_name: formData.get('songName'),
+                artist_name: formData.get('artistName'),
+                lyrics_spanish: formData.get('lyricsSpanish'),
+                lyrics_english: formData.get('lyricsEnglish'),
+                lyrics_german: formData.get('lyricsGerman'),
+                youtube_link: formData.get('youtubeLink')
+            };
+            
+            const editId = e.target.dataset.editId;
+            
+            try {
+                if (editId) {
+                    // Update existing song
+                    await updateSong(editId, songData);
+                    showStatus('Song updated successfully');
+                    delete e.target.dataset.editId;
+                    e.target.querySelector('button[type="submit"]').textContent = 'Add Song';
+                } else {
+                    // Add new song
+                    await addSong(songData);
+                    showStatus('Song added successfully');
+                }
+                
+                // Reset form
+                e.target.reset();
+                loadSongs();
+            } catch (error) {
+                showStatus('Failed to save song', 'error');
+            }
+        });
+        
+        document.getElementById('searchInput').addEventListener('input', async (e) => {
+            const query = e.target.value.trim();
+            
+            if (query.length === 0) {
+                renderSongs(allSongs);
+                return;
+            }
+            
+            try {
+                const searchResults = await searchSongs(query);
+                renderSongs(searchResults);
+            } catch (error) {
+                showStatus('Failed to search songs', 'error');
+            }
+        });
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSongs();
+        });
+    </script>
+</body>
+</html>
