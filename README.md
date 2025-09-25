@@ -1,11 +1,11 @@
 # Language Music App Backend
 
-A Node.js backend with SQLite database for managing Spanish songs with lyrics and YouTube links.
+A Node.js backend with SQLite (default) or PostgreSQL (Filess.io) for managing Spanish songs with lyrics and YouTube links.
 
 ## Features
 
 - **SQLite Database**: Lightweight, file-based database
-- **Google Sheets Mode (Read-only)**: Load songs directly from a published Google Sheet
+- **PostgreSQL (Filess.io) Mode**: Use a hosted PostgreSQL via Filess.io
 - **REST API**: Full CRUD operations for songs
 - **Search Functionality**: Search songs by artist or song name
 - **Admin Interface**: Web-based admin panel for managing songs
@@ -43,77 +43,38 @@ The `songs` table contains:
    npm run dev
    ```
 
-## Using Google Sheets as Data Source (Read-only)
+## Using PostgreSQL on Filess.io (Recommended for writes)
 
-You can serve songs from a Google Sheet instead of SQLite. This mode makes GET endpoints read from the sheet and disables write endpoints (POST/PUT/DELETE return 405).
+You can run this app against a managed PostgreSQL from Filess.io. When a PostgreSQL connection URL is provided, the server switches from SQLite to PostgreSQL automatically.
 
-1. Publish your sheet to the web in CSV format and ensure it’s accessible:
-   - In Sheets: File → Share → Share with others → set to “Anyone with the link can view”.
-   - File → Share → Publish to web → Entire sheet (or specific tab) → CSV.
-2. Note your Sheet ID (the long ID in the sheet URL) and optional tab gid.
-3. Set environment variables before starting the server:
+1. Create a PostgreSQL database on Filess.io.
+2. Get the connection URL (e.g., `postgres://USER:PASSWORD@HOST:PORT/DBNAME`).
+3. Set the following environment variables before starting the server:
    ```bash
-   export GOOGLE_SHEET_ID="<your_sheet_id>"
-   # Optional: if you want a specific tab
-   export GOOGLE_SHEET_GID="<gid_number>"
-   # Optional cache TTL (ms), default 60000
-   export SHEETS_CACHE_TTL_MS=60000
+   export DATABASE_URL="postgres://USER:PASSWORD@HOST:PORT/DBNAME"
+   # Optional: disable SSL if your provider requires plain connection (default is SSL on)
+   export PG_SSL=true
    npm start
    ```
 
-Expected column headers (case-insensitive, flexible aliases in parentheses):
-- `id` (optional)
-- `song_name` ("Song Name")
-- `artist_name` ("Artist Name")
-- `lyrics_spanish` ("Spanish")
-- `lyrics_english` (optional, "English")
-- `lyrics_german` (optional, "German")
-- `youtube_link` ("YouTube")
-- `created_at` (optional)
+Behavior:
+- When `DATABASE_URL` is set, the app uses PostgreSQL.
+- On startup, it auto-creates the `songs` table if it doesn't exist.
+- All CRUD endpoints operate against PostgreSQL.
 
-Notes:
-- If `id` is missing, incremental IDs are assigned at runtime.
-- Data is cached in-memory for `SHEETS_CACHE_TTL_MS`.
-- Admin UI will be read-only effectively; write actions will error with 405.
-
-### Enabling Writes to Google Sheets (Admin add/update)
-
-To allow `admin.html` to add songs directly to the Google Sheet, deploy a Google Apps Script Web App that appends rows:
-
-1. In Google Drive: New → Apps Script. Paste this code and deploy:
-   ```javascript
-   const SHEET_ID = 'YOUR_SHEET_ID';
-   const TAB_NAME = 'Sheet1'; // or your tab name
-   function doPost(e){
-     try{
-       const body = JSON.parse(e.postData.contents || '{}');
-       const { song_name, artist_name, lyrics_spanish, lyrics_english = '', lyrics_german = '', youtube_link } = body;
-       if(!song_name || !artist_name || !lyrics_spanish || !youtube_link){
-         return ContentService.createTextOutput(JSON.stringify({ ok:false, error:'missing fields' })).setMimeType(ContentService.MimeType.JSON);
-       }
-       const ss = SpreadsheetApp.openById(SHEET_ID);
-       const sh = ss.getSheetByName(TAB_NAME) || ss.getSheets()[0];
-       const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(h => String(h||'').toLowerCase());
-       const map = (name) => header.indexOf(name);
-       const row = new Array(header.length).fill('');
-       const set = (name, val) => { const i = map(name); if(i>=0) row[i] = val; };
-       set('song_name', song_name); set('artist_name', artist_name);
-       set('lyrics_spanish', lyrics_spanish); set('lyrics_english', lyrics_english); set('lyrics_german', lyrics_german);
-       set('youtube_link', youtube_link); set('created_at', new Date().toISOString());
-       sh.appendRow(row);
-       return ContentService.createTextOutput(JSON.stringify({ ok:true })).setMimeType(ContentService.MimeType.JSON);
-     }catch(err){
-       return ContentService.createTextOutput(JSON.stringify({ ok:false, error: String(err) })).setMimeType(ContentService.MimeType.JSON);
-     }
-   }
-   ```
-2. Deploy → New deployment → Type: Web app → Execute as: Me → Who has access: Anyone.
-3. Copy the Web App URL and set it as:
-   ```bash
-   export GOOGLE_SHEETS_WEBAPP_URL="https://script.google.com/.../exec"
-   ```
-
-Now, when `GOOGLE_SHEET_ID` and `GOOGLE_SHEETS_WEBAPP_URL` are set, `POST /api/songs` will forward to your Web App and invalidate the cache.
+Schema (PostgreSQL):
+```sql
+CREATE TABLE IF NOT EXISTS songs (
+  id SERIAL PRIMARY KEY,
+  song_name TEXT NOT NULL,
+  artist_name TEXT NOT NULL,
+  lyrics_spanish TEXT NOT NULL,
+  lyrics_english TEXT,
+  lyrics_german TEXT,
+  youtube_link TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
 
 ## API Endpoints
 

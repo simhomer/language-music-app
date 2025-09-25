@@ -4,13 +4,14 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const fetch = require('node-fetch');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SHEET_ID = process.env.GOOGLE_SHEET_ID || '';
-const SHEET_GID = process.env.GOOGLE_SHEET_GID || '';
-const SHEETS_WEBAPP_URL = process.env.GOOGLE_SHEETS_WEBAPP_URL || '';
-const SHEETS_MODE = !!SHEET_ID;
+const SHEETS_MODE = false;
+const PG_CONNECTION_STRING = process.env.DATABASE_URL || process.env.PG_CONNECTION_STRING || '';
+const PG_SSL = String(process.env.PG_SSL || 'true').toLowerCase() !== 'false';
+const POSTGRES_MODE = !!PG_CONNECTION_STRING && !SHEETS_MODE;
 
 // Middleware
 app.use(cors());
@@ -47,136 +48,88 @@ app.get('/admin.html', basicAuth, (req, res) => {
 // Serve static files from the root directory
 app.use(express.static(path.join(__dirname)));
 
-// Database setup (supports persistent disks via DB_PATH) - disabled when Sheets mode is on
+// Database setup (supports Postgres via DATABASE_URL; falls back to SQLite)
 let db = null;
-if(!SHEETS_MODE){
-  const dbFilePath = process.env.DB_PATH || path.join(__dirname, 'songs.db');
-  db = new sqlite3.Database(dbFilePath, (err) => {
-    if (err) {
-      console.error('Error opening database:', err.message);
-    } else {
-      console.log('Connected to the SQLite database at', dbFilePath);
+let pgPool = null;
+{
+  if(POSTGRES_MODE){
+    try{
+      pgPool = new Pool({ connectionString: PG_CONNECTION_STRING, ssl: PG_SSL ? { rejectUnauthorized: false } : false });
+      console.log('Connected to PostgreSQL');
+    }catch(e){
+      console.error('Failed to initialize PostgreSQL pool:', e && e.message);
     }
-  });
+  } else {
+    const dbFilePath = process.env.DB_PATH || path.join(__dirname, 'songs.db');
+    db = new sqlite3.Database(dbFilePath, (err) => {
+      if (err) {
+        console.error('Error opening database:', err.message);
+      } else {
+        console.log('Connected to the SQLite database at', dbFilePath);
+      }
+    });
+  }
 }
 
 // Create/seed songs table if it doesn't exist
-if(!SHEETS_MODE && db){
-  db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS songs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      song_name TEXT NOT NULL,
-      artist_name TEXT NOT NULL,
-      lyrics_spanish TEXT NOT NULL,
-      lyrics_english TEXT,
-      lyrics_german TEXT,
-      youtube_link TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
-    // Optional auto-seed on first boot if ENABLE_AUTOINIT is set (e.g., on free hosts without shell)
-    if (String(process.env.ENABLE_AUTOINIT || '').toLowerCase() === 'true') {
-      try {
-        const { seedWithDb } = require('./init-database');
-        seedWithDb(db, () => console.log('Auto-initialization complete.'));
-      } catch (e) {
-        console.warn('Auto-initialization skipped:', e && e.message);
+  if(pgPool){
+    (async () => {
+      try{
+        const { rows: userRows } = await pgPool.query('SELECT current_user as u');
+        const currentUser = (userRows && userRows[0] && userRows[0].u) || undefined;
+        if(currentUser){
+          await pgPool.query(`CREATE SCHEMA IF NOT EXISTS "${currentUser}" AUTHORIZATION CURRENT_USER`);
+          await pgPool.query(`SET search_path TO "${currentUser}", public`);
+        }
+        await pgPool.query(`CREATE TABLE IF NOT EXISTS music_entries (
+          id SERIAL PRIMARY KEY,
+          song_name TEXT NOT NULL,
+          artist_name TEXT NOT NULL,
+          lyrics_spanish TEXT NOT NULL,
+          lyrics_english TEXT,
+          lyrics_german TEXT,
+          youtube_link TEXT NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )`);
+        console.log('Ensured PostgreSQL schema');
+      }catch(e){
+        console.error('Failed to ensure PostgreSQL schema:', e && e.message);
       }
-    }
-  });
-}
-
-// Sheets cache and helpers
-let sheetsCache = { data: [], lastFetchMs: 0 };
-const SHEETS_CACHE_TTL_MS = Number(process.env.SHEETS_CACHE_TTL_MS || 60_000);
-
-function buildPublishedCsvUrl(sheetId, gid){
-  // Requires File -> Share -> Anyone with the link, and File -> Share -> Publish to the web (CSV)
-  const suffix = gid ? `&gid=${encodeURIComponent(gid)}` : '';
-  return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/export?format=csv${suffix}`;
-}
-
-function parseCsv(text){
-  // Simple CSV parser supporting quoted commas and newlines
-  const rows = [];
-  let row = [];
-  let cur = '';
-  let inQuotes = false;
-  for(let i=0;i<text.length;i++){
-    const ch = text[i];
-    if(inQuotes){
-      if(ch === '"'){
-        const next = text[i+1];
-        if(next === '"'){ cur += '"'; i++; }
-        else { inQuotes = false; }
-      } else {
-        cur += ch;
+    })();
+  } else if(db){
+    db.serialize(() => {
+      db.run(`CREATE TABLE IF NOT EXISTS songs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        song_name TEXT NOT NULL,
+        artist_name TEXT NOT NULL,
+        lyrics_spanish TEXT NOT NULL,
+        lyrics_english TEXT,
+        lyrics_german TEXT,
+        youtube_link TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+      if (String(process.env.ENABLE_AUTOINIT || '').toLowerCase() === 'true') {
+        try {
+          const { seedWithDb } = require('./init-database');
+          seedWithDb(db, () => console.log('Auto-initialization complete.'));
+        } catch (e) {
+          console.warn('Auto-initialization skipped:', e && e.message);
+        }
       }
-    } else {
-      if(ch === '"') { inQuotes = true; }
-      else if(ch === ','){ row.push(cur); cur = ''; }
-      else if(ch === '\n'){ row.push(cur); rows.push(row); row = []; cur = ''; }
-      else if(ch === '\r'){ /* ignore */ }
-      else { cur += ch; }
-    }
+    });
   }
-  // flush
-  if(cur.length > 0 || row.length > 0){ row.push(cur); rows.push(row); }
-  return rows;
-}
 
-function mapSheetRowToSong(row, header){
-  const get = (name) => {
-    const idx = header.findIndex(h => String(h || '').trim().toLowerCase() === String(name).toLowerCase());
-    return idx >= 0 ? (row[idx] || '').trim() : '';
-  };
-  const idRaw = get('id') || get('ID') || '';
-  const id = idRaw ? Number(idRaw) : undefined;
-  return {
-    id: id || undefined,
-    song_name: get('song_name') || get('Song Name') || get('song') || '',
-    artist_name: get('artist_name') || get('Artist Name') || get('artist') || '',
-    lyrics_spanish: get('lyrics_spanish') || get('Spanish') || get('spanish') || '',
-    lyrics_english: get('lyrics_english') || get('English') || get('english') || '',
-    lyrics_german: get('lyrics_german') || get('German') || get('german') || '',
-    youtube_link: get('youtube_link') || get('YouTube') || get('youtube') || '',
-    created_at: get('created_at') || get('createdAt') || new Date().toISOString()
-  };
-}
-
-async function fetchSongsFromSheet(){
-  if(!SHEETS_MODE) return [];
-  const now = Date.now();
-  if(now - sheetsCache.lastFetchMs < SHEETS_CACHE_TTL_MS && sheetsCache.data.length){
-    return sheetsCache.data;
-  }
-  const url = buildPublishedCsvUrl(SHEET_ID, SHEET_GID);
-  const res = await fetch(url, { headers: { 'Accept': 'text/csv' } });
-  if(!res.ok){
-    throw new Error(`Sheets fetch failed: ${res.status}`);
-  }
-  const text = await res.text();
-  const rows = parseCsv(text);
-  if(!rows.length) return [];
-  const header = rows[0];
-  const dataRows = rows.slice(1).filter(r => r && r.some(c => (c||'').trim().length));
-  const mapped = dataRows.map(r => mapSheetRowToSong(r, header)).filter(s => s.song_name && s.artist_name && s.lyrics_spanish && s.youtube_link);
-  // Auto-assign incremental ids if missing
-  let nextId = 1;
-  mapped.forEach(s => { if(typeof s.id !== 'number'){ s.id = nextId++; } else { nextId = Math.max(nextId, s.id + 1); } });
-  sheetsCache = { data: mapped, lastFetchMs: now };
-  return mapped;
-}
 
 // API Routes
 
 // Get all songs
 app.get('/api/songs', async (req, res) => {
   try{
-    if(SHEETS_MODE){
-      const rows = await fetchSongsFromSheet();
+    if(pgPool){
+      const { rows } = await pgPool.query('SELECT * FROM music_entries ORDER BY created_at DESC');
       return res.json(rows);
     }
-    const query = 'SELECT * FROM songs ORDER BY created_at DESC';
+    const query = 'SELECT * FROM music_entries ORDER BY created_at DESC';
     db.all(query, [], (err, rows) => {
       if (err) {
         console.error('Error fetching songs:', err.message);
@@ -194,14 +147,13 @@ app.get('/api/songs', async (req, res) => {
 // Get a specific song by ID
 app.get('/api/songs/:id', async (req, res) => {
   try{
-    if(SHEETS_MODE){
-      const rows = await fetchSongsFromSheet();
-      const id = Number(req.params.id);
-      const found = rows.find(r => Number(r.id) === id);
-      if(!found) return res.status(404).json({ error: 'Song not found' });
-      return res.json(found);
+    if(pgPool){
+      const { rows } = await pgPool.query('SELECT * FROM music_entries WHERE id = $1', [Number(req.params.id)]);
+      const row = rows[0];
+      if(!row) return res.status(404).json({ error: 'Song not found' });
+      return res.json(row);
     }
-    const query = 'SELECT * FROM songs WHERE id = ?';
+    const query = 'SELECT * FROM music_entries WHERE id = ?';
     db.get(query, [req.params.id], (err, row) => {
       if (err) {
         console.error('Error fetching song:', err.message);
@@ -222,9 +174,6 @@ app.get('/api/songs/:id', async (req, res) => {
 
 // Add a new song
 app.post('/api/songs', async (req, res) => {
-  if(SHEETS_MODE && !SHEETS_WEBAPP_URL){
-    return res.status(405).json({ error: 'Read-only: Google Sheets mode enabled (no write webhook configured)' });
-  }
   const { song_name, artist_name, lyrics_spanish, lyrics_english, lyrics_german, youtube_link } = req.body;
   
   // Validate required fields
@@ -232,38 +181,28 @@ app.post('/api/songs', async (req, res) => {
     res.status(400).json({ error: 'Song name, artist name, Spanish lyrics, and YouTube link are required' });
     return;
   }
-  if(SHEETS_MODE && SHEETS_WEBAPP_URL){
+  if(pgPool){
     try{
-      const payload = { song_name, artist_name, lyrics_spanish, lyrics_english: lyrics_english || '', lyrics_german: lyrics_german || '', youtube_link };
-      const resp = await fetch(SHEETS_WEBAPP_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if(!resp.ok){
-        const text = await resp.text().catch(()=> '');
-        return res.status(502).json({ error: 'Failed to append to Google Sheet', details: text.slice(0, 400) });
-      }
-      // Invalidate cache so next GET sees the new row
-      sheetsCache = { data: [], lastFetchMs: 0 };
-      const result = await resp.json().catch(()=>({ ok:true }));
+      const { rows } = await pgPool.query(
+        'INSERT INTO music_entries (song_name, artist_name, lyrics_spanish, lyrics_english, lyrics_german, youtube_link) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+        [song_name, artist_name, lyrics_spanish, lyrics_english || null, lyrics_german || null, youtube_link]
+      );
       return res.status(201).json({
-        id: result && result.id ? result.id : undefined,
+        id: rows[0] && rows[0].id,
         song_name,
         artist_name,
         lyrics_spanish,
         lyrics_english,
         lyrics_german,
         youtube_link,
-        message: 'Song added successfully (Sheets)'
+        message: 'Song added successfully'
       });
     }catch(e){
-      console.error('Sheets write failed:', e && e.message);
-      return res.status(502).json({ error: 'Failed to write to Google Sheet' });
+      console.error('Error adding song (Postgres):', e && e.message);
+      return res.status(500).json({ error: 'Failed to add song' });
     }
   }
-  const query = 'INSERT INTO songs (song_name, artist_name, lyrics_spanish, lyrics_english, lyrics_german, youtube_link) VALUES (?, ?, ?, ?, ?, ?)';
-  
+  const query = 'INSERT INTO music_entries (song_name, artist_name, lyrics_spanish, lyrics_english, lyrics_german, youtube_link) VALUES (?, ?, ?, ?, ?, ?)';
   db.run(query, [song_name, artist_name, lyrics_spanish, lyrics_english || null, lyrics_german || null, youtube_link], function(err) {
     if (err) {
       console.error('Error adding song:', err.message);
@@ -284,19 +223,38 @@ app.post('/api/songs', async (req, res) => {
 });
 
 // Update a song
-app.put('/api/songs/:id', (req, res) => {
-  if(SHEETS_MODE){ return res.status(405).json({ error: 'Read-only: Google Sheets mode enabled' }); }
+app.put('/api/songs/:id', async (req, res) => {
   const { song_name, artist_name, lyrics_spanish, lyrics_english, lyrics_german, youtube_link } = req.body;
   const songId = req.params.id;
   
-  // Validate required fields
   if (!song_name || !artist_name || !lyrics_spanish || !youtube_link) {
     res.status(400).json({ error: 'Song name, artist name, Spanish lyrics, and YouTube link are required' });
     return;
   }
   
-  const query = 'UPDATE songs SET song_name = ?, artist_name = ?, lyrics_spanish = ?, lyrics_english = ?, lyrics_german = ?, youtube_link = ? WHERE id = ?';
-  
+  if(pgPool){
+    try{
+      const result = await pgPool.query(
+        'UPDATE music_entries SET song_name = $1, artist_name = $2, lyrics_spanish = $3, lyrics_english = $4, lyrics_german = $5, youtube_link = $6 WHERE id = $7',
+        [song_name, artist_name, lyrics_spanish, lyrics_english || null, lyrics_german || null, youtube_link, Number(songId)]
+      );
+      if(result.rowCount === 0){ return res.status(404).json({ error: 'Song not found' }); }
+      return res.json({ 
+        id: Number(songId),
+        song_name,
+        artist_name,
+        lyrics_spanish,
+        lyrics_english,
+        lyrics_german,
+        youtube_link,
+        message: 'Song updated successfully'
+      });
+    }catch(e){
+      console.error('Error updating song (Postgres):', e && e.message);
+      return res.status(500).json({ error: 'Failed to update song' });
+    }
+  }
+  const query = 'UPDATE music_entries SET song_name = ?, artist_name = ?, lyrics_spanish = ?, lyrics_english = ?, lyrics_german = ?, youtube_link = ? WHERE id = ?';
   db.run(query, [song_name, artist_name, lyrics_spanish, lyrics_english || null, lyrics_german || null, youtube_link, songId], function(err) {
     if (err) {
       console.error('Error updating song:', err.message);
@@ -321,10 +279,18 @@ app.put('/api/songs/:id', (req, res) => {
 });
 
 // Delete a song
-app.delete('/api/songs/:id', (req, res) => {
-  if(SHEETS_MODE){ return res.status(405).json({ error: 'Read-only: Google Sheets mode enabled' }); }
-  const query = 'DELETE FROM songs WHERE id = ?';
-  
+app.delete('/api/songs/:id', async (req, res) => {
+  if(pgPool){
+    try{
+      const result = await pgPool.query('DELETE FROM music_entries WHERE id = $1', [Number(req.params.id)]);
+      if(result.rowCount === 0){ return res.status(404).json({ error: 'Song not found' }); }
+      return res.json({ message: 'Song deleted successfully' });
+    }catch(e){
+      console.error('Error deleting song (Postgres):', e && e.message);
+      return res.status(500).json({ error: 'Failed to delete song' });
+    }
+  }
+  const query = 'DELETE FROM music_entries WHERE id = ?';
   db.run(query, [req.params.id], function(err) {
     if (err) {
       console.error('Error deleting song:', err.message);
@@ -342,14 +308,13 @@ app.delete('/api/songs/:id', (req, res) => {
 // Search songs by artist or song name
 app.get('/api/songs/search/:query', async (req, res) => {
   try{
-    if(SHEETS_MODE){
-      const q = String(req.params.query || '').toLowerCase();
-      const rows = await fetchSongsFromSheet();
-      const filtered = rows.filter(r => (r.song_name||'').toLowerCase().includes(q) || (r.artist_name||'').toLowerCase().includes(q));
-      return res.json(filtered);
+    if(pgPool){
+      const searchQuery = `%${req.params.query}%`;
+      const { rows } = await pgPool.query('SELECT * FROM music_entries WHERE song_name ILIKE $1 OR artist_name ILIKE $1 ORDER BY created_at DESC', [searchQuery]);
+      return res.json(rows);
     }
     const searchQuery = `%${req.params.query}%`;
-    const query = 'SELECT * FROM songs WHERE song_name LIKE ? OR artist_name LIKE ? ORDER BY created_at DESC';
+    const query = 'SELECT * FROM music_entries WHERE song_name LIKE ? OR artist_name LIKE ? ORDER BY created_at DESC';
     db.all(query, [searchQuery, searchQuery], (err, rows) => {
       if (err) {
         console.error('Error searching songs:', err.message);
@@ -372,15 +337,23 @@ app.get('/', (req, res) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  if(SHEETS_MODE){
-    console.log('Google Sheets mode enabled. Sheet ID:', SHEET_ID, SHEET_GID ? `(gid=${SHEET_GID})` : '');
+  if(POSTGRES_MODE){
+    console.log('PostgreSQL mode enabled. Using DATABASE_URL connection');
   } else {
     console.log(`Visit http://localhost:${PORT} to view the app`);
   }
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
+  try{
+    if(pgPool){
+      await pgPool.end();
+      console.log('PostgreSQL pool closed.');
+    }
+  }catch(e){
+    console.error('Error closing Postgres pool:', e && e.message);
+  }
   if(db){
     db.close((err) => {
       if (err) {
