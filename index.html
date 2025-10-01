@@ -686,6 +686,13 @@ function resolveBackendOrigin(){
     const stored = localStorage.getItem('backend_origin');
     if(stored) return stored.replace(/\/$/, '');
   }catch(e){}
+  // If running on Netlify, default to the deployed Render backend to enable one-step usage
+  try{
+    const host = location.hostname || '';
+    if(host.endsWith('netlify.app')){
+      return 'https://language-music-app.onrender.com';
+    }
+  }catch(e){}
   if(location.protocol === 'file:') return 'http://localhost:3000';
   return '';
 }

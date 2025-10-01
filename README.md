@@ -153,6 +153,13 @@ The database comes pre-populated with 4 songs from your existing app:
 - CORS is enabled for cross-origin requests
 - Static files are served from the root directory
 
+## Deployment
+
+- When hosted on Netlify (domain ends with `netlify.app`), the frontend automatically targets the backend at `https://language-music-app.onrender.com`. No query parameters are required.
+- You can override the backend once using a query parameter, which is then persisted in `localStorage`:
+  - Example: `https://<your-netlify-site>.netlify.app/?backend=https://your-backend.example.com`
+- To reset to defaults, clear the `backend_origin` key in your browser `localStorage` (or clear site data) and reload.
+
 ## Next Steps
 
 To integrate this backend with your existing frontend:
