@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elf Joke</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "American Typewriter", serif;
+      background: #b8b8b8;
+      color: #111111;
+      position: relative;
+      overflow: hidden;
+    }
+    #joke {
+      font-size: 2rem;
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+      will-change: transform;
+    }
+    #joke:focus {
+      outline: 2px solid #3b82f6;
+      outline-offset: 4px;
+      border-radius: 6px;
+    }
+
+    /* Pop animation for the text */
+    #joke.popped {
+      animation: pop 280ms ease-out;
+    }
+    @keyframes pop {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.15); }
+      100% { transform: scale(1); }
+    }
+
+    /* Radial splash burst from the center (element-based for sequencing) */
+    .burst {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 20vmin;
+      height: 20vmin;
+      transform: translate(-50%, -50%) scale(0);
+      border-radius: 50%;
+      pointer-events: none;
+      animation: splash 600ms ease-out forwards;
+      filter: blur(0.5px);
+    }
+    @keyframes splash {
+      0% { opacity: 0.9; transform: translate(-50%, -50%) scale(0); }
+      80% { opacity: 0.5; }
+      100% { opacity: 0; transform: translate(-50%, -50%) scale(16); }
+    }
+  </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const jokeEl = document.getElementById('joke');
+      const colors = ['#f59e0b', '#10b981', '#3b82f6']; // amber, emerald, blue
+
+      function createBurst(color, delayMs) {
+        const el = document.createElement('div');
+        el.className = 'burst';
+        el.style.background = `radial-gradient(circle, ${color} 0%, ${color} 40%, rgba(0,0,0,0) 41%)`;
+        el.style.animationDelay = `${delayMs}ms`;
+        document.body.appendChild(el);
+        el.addEventListener('animationend', () => {
+          el.remove();
+        }, { once: true });
+      }
+      function reveal() {
+        jokeEl.textContent = 'The elf-abet';
+        jokeEl.setAttribute('aria-live', 'polite');
+        jokeEl.style.cursor = 'default';
+        jokeEl.classList.add('popped');
+        // Queue three splashes with small delays and different colors
+        const gap = 200; // ms between bursts
+        colors.forEach((c, i) => createBurst(c, i * gap));
+        // Redirect back to home after 4 seconds
+        setTimeout(() => {
+          window.location.href = 'index.html';
+        }, 3000);
+        jokeEl.removeEventListener('click', reveal);
+        jokeEl.removeEventListener('keydown', onKey);
+      }
+      function onKey(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          reveal();
+        }
+      }
+      jokeEl.addEventListener('click', reveal);
+      jokeEl.addEventListener('keydown', onKey);
+      jokeEl.focus();
+    });
+  </script>
+  </head>
+<body>
+  <div id="joke" role="button" tabindex="0" aria-label="Joke question">
+    What do elves learn in school?
+  </div>
+</body>
+</html>
+
+
